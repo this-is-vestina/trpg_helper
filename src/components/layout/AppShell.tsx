@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Users, ImagePlus, ScrollText, LayoutGrid } from 'lucide-react'
+import { Users, ImagePlus, ScrollText, LayoutGrid, Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -44,6 +44,7 @@ const navItems = [
   { to: '/characters', label: '角色卡', icon: Users, end: false },
   { to: '/ho-slots', label: 'Ho 位', icon: LayoutGrid, end: false },
   { to: '/posters', label: '海报', icon: ImagePlus, end: false },
+  { to: '/notice', label: '公告', icon: Bell, end: false },
 ]
 
 function Sidebar() {

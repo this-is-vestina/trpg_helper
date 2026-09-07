@@ -6,6 +6,7 @@ import { CharacterEdit } from '@/pages/CharacterEdit'
 import { PosterStudio } from '@/pages/PosterStudio'
 import { HoSlotPage } from '@/pages/HoSlotPage'
 import { StImporter } from '@/pages/StImporter'
+import { NoticeBoard } from '@/pages/NoticeBoard'
 
 /**
  * 路由表（React Router v7 data router）
@@ -16,6 +17,7 @@ import { StImporter } from '@/pages/StImporter'
  * - `/st-importer` .st 快捷导入
  * - `/ho-slots` Ho 位管理看板
  * - `/posters` 海报工作台
+ * - `/notice` 公告栏
  * - 兜底：未匹配路由跳回首页
  */
 export const router = createBrowserRouter([
@@ -30,6 +32,7 @@ export const router = createBrowserRouter([
       { path: 'st-importer', element: <StImporter /> },
       { path: 'ho-slots', element: <HoSlotPage /> },
       { path: 'posters', element: <PosterStudio /> },
+      { path: 'notice', element: <NoticeBoard /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
