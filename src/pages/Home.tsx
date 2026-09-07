@@ -2,12 +2,11 @@ import { Link } from 'react-router-dom'
 import { Users, FileCode, ImagePlus, ChevronRight, type LucideIcon } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 
 /**
  * 首页 —— 项目仪表盘
- * 展示当前阶段进度 + 三个入口
+ * 仅展示三个入口 + 数据说明
  */
 export function Home() {
   return (
@@ -18,21 +17,6 @@ export function Home() {
           跑团助手 · 数据完全保存在你的浏览器本地，刷新页面不丢、清缓存会丢。
         </p>
       </header>
-
-      <section>
-        <div className="mb-3 flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-ink">阶段进度</h2>
-          <Badge variant="default">Phase 1 · 地基</Badge>
-        </div>
-        <Card>
-          <CardContent className="grid grid-cols-1 gap-3 p-6 md:grid-cols-4">
-            <PhaseStep n={1} label="Vite + React + Tailwind" done />
-            <PhaseStep n={2} label="路由 + 设计 tokens" done />
-            <PhaseStep n={3} label="角色卡 CRUD + .st 解析" />
-            <PhaseStep n={4} label="海报生成 + 部署" />
-          </CardContent>
-        </Card>
-      </section>
 
       <section>
         <h2 className="mb-3 text-sm font-semibold text-ink">快速入口</h2>
@@ -78,29 +62,6 @@ export function Home() {
           。
         </p>
       </section>
-    </div>
-  )
-}
-
-function PhaseStep({ n, label, done }: { n: number; label: string; done?: boolean }) {
-  return (
-    <div
-      className={
-        done
-          ? 'flex items-center gap-2 rounded-sm border border-accent/30 bg-accent-soft px-3 py-2 text-sm text-ink'
-          : 'flex items-center gap-2 rounded-sm border border-line bg-surface px-3 py-2 text-sm text-muted'
-      }
-    >
-      <span
-        className={
-          done
-            ? 'flex size-6 items-center justify-center rounded-sm bg-accent text-xs font-mono text-white'
-            : 'flex size-6 items-center justify-center rounded-sm border border-line bg-surface text-xs font-mono'
-        }
-      >
-        {n}
-      </span>
-      <span className="truncate">{label}</span>
     </div>
   )
 }
