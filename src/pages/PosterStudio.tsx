@@ -4,10 +4,12 @@
  * - 绑定角色卡 → 自介模板自动取 9 维 + 衍生 + 技能
  * - 招募模板纯文本字段
  * - Canvas 实时预览 → 下载 PNG
+ * - 配色 / 西文字体 / 中文字体 独立可选
+ * - 左下角固定植物图鉴装饰（半透明）
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ImagePlus, Download, RotateCcw, User, Megaphone } from 'lucide-react'
+import { ImagePlus, Download, RotateCcw, User, Megaphone, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -21,21 +23,30 @@ import {
   POSTER_TEMPLATES,
   SELF_INTRO_TEMPLATE,
   POSTER_PALETTES,
-  POSTER_FONTS,
+  POSTER_HEADING_FONTS,
+  POSTER_CJK_FONTS,
+  PLANT_IMAGE_DATA_URL,
   getPaletteById,
-  getFontById,
+  getHeadingFont,
+  getCjkFont,
   renderPoster,
   renderRecruitPoster,
+  renderApplicationPoster,
   downloadCanvasAsPng,
 } from '@/features/poster'
+import type { PosterTheme } from '@/features/poster'
 import { useCharacterStore } from '@/features/character'
 import type { Character } from '@/features/character'
+
+const DEFAULT_MONO_FONT =
+  '"JetBrains Mono", "Fira Code", ui-monospace, monospace'
 
 export function PosterStudio() {
   const [templateId, setTemplateId] = useState(SELF_INTRO_TEMPLATE.id)
   const [characterId, setCharacterId] = useState<string>('none')
   const [paletteId, setPaletteId] = useState(POSTER_PALETTES[0].id)
-  const [fontId, setFontId] = useState(POSTER_FONTS[0].id)
+  const [headingFontId, setHeadingFontId] = useState(POSTER_HEADING_FONTS[0].id)
+  const [bodyFontId, setBodyFontId] = useState(POSTER_CJK_FONTS[0].id)
   // 通用字段值：key → 字符串
   const [values, setValues] = useState<Record<string, string>>({})
 
@@ -79,7 +90,9 @@ export function PosterStudio() {
       const next = { ...v }
       if (!sloganTouchedRef.current) {
         const occ = selectedCharacter.info.occupation.trim()
-        next.slogan = occ ? `${occ} · 寻找真相的同行者` : '在深渊的边缘，记录每一缕微光。'
+        next.slogan = occ
+          ? `${occ} · 寻找真相的同行者`
+          : '在深渊的边缘，记录每一缕微光。'
       }
       if (!backgroundTouchedRef.current) {
         next.background = selectedCharacter.background.trim()
@@ -88,24 +101,49 @@ export function PosterStudio() {
     })
   }, [selectedCharacter, template.type])
 
+  // 加载植物图鉴（data URL → HTMLImageElement）
+  const [plantImage, setPlantImage] = useState<HTMLImageElement | null>(null)
+  useEffect(() => {
+    const img = new Image()
+    img.onload = () => setPlantImage(img)
+    img.onerror = () => setPlantImage(null)
+    img.src = PLANT_IMAGE_DATA_URL
+  }, [])
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // 任意 input 变更都重画
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const theme = { palette: getPaletteById(paletteId), fonts: getFontById(fontId) }
+    const theme: PosterTheme = {
+      palette: getPaletteById(paletteId),
+      headingFont: getHeadingFont(headingFontId).value,
+      bodyFont: getCjkFont(bodyFontId).value,
+      monoFont: DEFAULT_MONO_FONT,
+    }
     if (template.type === 'self-intro') {
       renderPoster(canvas, {
         template,
         character: selectedCharacter,
         values: { slogan: values.slogan ?? '', background: values.background ?? '' },
         theme,
+        plantImage,
       })
     } else if (template.type === 'recruit') {
-      renderRecruitPoster(canvas, { template, values, theme })
+      renderRecruitPoster(canvas, { template, values, theme, plantImage })
+    } else if (template.type === 'apply') {
+      renderApplicationPoster(canvas, { template, values, theme, plantImage })
     }
-  }, [template, selectedCharacter, values, paletteId, fontId])
+  }, [
+    template,
+    selectedCharacter,
+    values,
+    paletteId,
+    headingFontId,
+    bodyFontId,
+    plantImage,
+  ])
 
   function setField(key: string, v: string) {
     if (key === 'slogan') sloganTouchedRef.current = true
@@ -123,14 +161,20 @@ export function PosterStudio() {
     const canvas = canvasRef.current
     if (!canvas) return
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const baseName =
-      template.type === 'self-intro'
-        ? selectedCharacter?.info.name.trim() || '调查员自介'
-        : `${values.moduleType?.slice(0, 16) || '模组'}-招募`
+    let baseName: string
+    if (template.type === 'self-intro') {
+      baseName = selectedCharacter?.info.name.trim() || '角色卡'
+    } else if (template.type === 'recruit') {
+      baseName = `${values.moduleType?.slice(0, 16) || '模组'}-招募`
+    } else {
+      baseName = `${values.name?.trim().slice(0, 16) || '角色'}-应征`
+    }
     downloadCanvasAsPng(canvas, `${baseName}-${ts}.png`)
   }
 
   const showCharacterBinding = template.type === 'self-intro'
+  const applyFormLabel =
+    showCharacterBinding ? '3. 填写字段' : template.type === 'recruit' ? '2. 填写招募信息' : '2. 填写应征信息'
 
   return (
     <div className="flex flex-col gap-6 pb-12">
@@ -142,7 +186,11 @@ export function PosterStudio() {
           </p>
         </div>
         <Badge variant={template.type === 'self-intro' ? 'default' : 'pl'}>
-          {template.type === 'self-intro' ? '调查员自介' : '模组招募'}
+          {template.type === 'self-intro'
+            ? '角色卡'
+            : template.type === 'recruit'
+              ? '模组招募'
+              : '应征申请'}
         </Badge>
       </div>
 
@@ -211,15 +259,29 @@ export function PosterStudio() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">选字体</CardTitle>
+              <CardDescription>西文 / 中文分开选择</CardDescription>
             </CardHeader>
-            <CardContent>
-              <SelectPopover value={fontId} onValueChange={setFontId}>
-                {POSTER_FONTS.map((f) => (
-                  <SelectItem key={f.id} value={f.id}>
-                    {f.name}
-                  </SelectItem>
-                ))}
-              </SelectPopover>
+            <CardContent className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted">西文字体（标题 / 数字）</Label>
+                <SelectPopover value={headingFontId} onValueChange={setHeadingFontId}>
+                  {POSTER_HEADING_FONTS.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      <span style={{ fontFamily: f.value }}>{f.name}</span>
+                    </SelectItem>
+                  ))}
+                </SelectPopover>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted">中文字体（正文）</Label>
+                <SelectPopover value={bodyFontId} onValueChange={setBodyFontId}>
+                  {POSTER_CJK_FONTS.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      <span style={{ fontFamily: f.value }}>{f.name}</span>
+                    </SelectItem>
+                  ))}
+                </SelectPopover>
+              </div>
             </CardContent>
           </Card>
 
@@ -262,11 +324,16 @@ export function PosterStudio() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 {showCharacterBinding ? (
-                  <>3. 填写字段</>
-                ) : (
+                  applyFormLabel
+                ) : template.type === 'recruit' ? (
                   <>
                     <Megaphone className="size-4 text-accent" />
-                    2. 填写招募信息
+                    {applyFormLabel}
+                  </>
+                ) : (
+                  <>
+                    <Send className="size-4 text-accent" />
+                    {applyFormLabel}
                   </>
                 )}
               </CardTitle>
@@ -313,15 +380,12 @@ export function PosterStudio() {
                 预览
               </CardTitle>
               <CardDescription>
-                渲染尺寸 1080 × 1440，CSS 缩放至适合容器宽度。
+                渲染尺寸 1080 宽，高度自适应内容。CSS 缩放至适合容器宽度。
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-hidden rounded-sm border border-line bg-surface">
-                <div
-                  className="relative mx-auto"
-                  style={{ aspectRatio: `${template.size.w} / ${template.size.h}` }}
-                >
+                <div className="relative mx-auto w-full">
                   <canvas
                     ref={canvasRef}
                     className="block size-full"

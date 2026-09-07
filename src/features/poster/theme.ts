@@ -1,13 +1,7 @@
 /**
  * 海报主题预设（方案 2：配色 + 字体可选）
  * - 配色：5 套信纸风格调色板
- * - 字体：4 套 heading/body/mono 组合
- *
- * 用户使用流程：
- *   1. 选模板（自介 / 招募）
- *   2. 选主题（配色）
- *   3. 选字体
- *   4. 渲染时传 theme 进 renderPoster / renderRecruitPoster
+ * - 字体：西文（heading）和中文（body）独立选择
  */
 
 export interface PosterPalette {
@@ -39,12 +33,35 @@ export interface PosterPalette {
   card: string
 }
 
-export interface PosterFont {
+export interface PosterFontOption {
   id: string
   name: string
-  heading: string
-  body: string
-  mono: string
+  value: string
+}
+
+/** 西文字体（标题 / 数字 / 英文小字） */
+export const POSTER_HEADING_FONTS: PosterFontOption[] = [
+  { id: 'didot', name: 'Didot（推荐）', value: '"Didot", "Bodoni MT", "Playfair Display", serif' },
+  { id: 'playfair', name: 'Playfair Display', value: '"Playfair Display", "Didot", serif' },
+  { id: 'georgia', name: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
+  { id: 'courier', name: 'Courier New', value: '"Courier New", Courier, monospace' },
+  { id: 'times', name: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+]
+
+/** 中文字体（正文 / 标题中文） */
+export const POSTER_CJK_FONTS: PosterFontOption[] = [
+  { id: 'songti', name: '思源宋体（推荐）', value: '"Source Han Serif SC", "Noto Serif SC", "Songti SC", serif' },
+  { id: 'heiti', name: '思源黑体', value: '"Source Han Sans SC", "Noto Sans SC", "PingFang SC", sans-serif' },
+  { id: 'kaiti', name: '楷体', value: '"Kaiti SC", "STKaiti", "FangSong", serif' },
+  { id: 'fangsong', name: '仿宋', value: '"FangSong", "STFangsong", serif' },
+]
+
+export function getHeadingFont(id: string): PosterFontOption {
+  return POSTER_HEADING_FONTS.find((f) => f.id === id) ?? POSTER_HEADING_FONTS[0]
+}
+
+export function getCjkFont(id: string): PosterFontOption {
+  return POSTER_CJK_FONTS.find((f) => f.id === id) ?? POSTER_CJK_FONTS[0]
 }
 
 /** 配色预设：信纸风 */
@@ -136,42 +153,6 @@ export const POSTER_PALETTES: PosterPalette[] = [
   },
 ]
 
-/** 字体预设 */
-export const POSTER_FONTS: PosterFont[] = [
-  {
-    id: 'didot-source-serif',
-    name: 'Didot + 思源宋体（推荐）',
-    heading: '"Didot", "Bodoni MT", "Playfair Display", serif',
-    body: '"Source Han Serif SC", "Noto Serif SC", serif',
-    mono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
-  },
-  {
-    id: 'playfair-source-serif',
-    name: 'Playfair + 思源宋体',
-    heading: '"Playfair Display", "Didot", serif',
-    body: '"Source Han Serif SC", "Noto Serif SC", serif',
-    mono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
-  },
-  {
-    id: 'georgia-source-serif',
-    name: 'Georgia + 思源宋体',
-    heading: 'Georgia, "Times New Roman", serif',
-    body: '"Source Han Serif SC", "Noto Serif SC", serif',
-    mono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
-  },
-  {
-    id: 'courier-sans',
-    name: 'Courier New + 等线',
-    heading: '"Courier New", Courier, monospace',
-    body: '"Microsoft YaHei", "PingFang SC", sans-serif',
-    mono: '"Courier New", Courier, monospace',
-  },
-]
-
 export function getPaletteById(id: string): PosterPalette {
   return POSTER_PALETTES.find((p) => p.id === id) ?? POSTER_PALETTES[0]
-}
-
-export function getFontById(id: string): PosterFont {
-  return POSTER_FONTS.find((f) => f.id === id) ?? POSTER_FONTS[0]
 }

@@ -95,8 +95,66 @@ export const RECRUIT_TEMPLATE: PosterTemplate = {
   },
 }
 
+/** 「应征申请」模板（PL 视角，求职信风格） */
+export const APPLICATION_TEMPLATE: PosterTemplate = {
+  id: 'application-v1',
+  type: 'apply',
+  name: '应征申请',
+  thumbnail: '',
+  size: { w: 1080, h: 1440 },
+  fields: [
+    { key: 'name', label: '角色名', placeholder: '例：阿斯特里德·恩德尔' },
+    { key: 'player', label: 'PL 名字', placeholder: '例：小黑' },
+    { key: 'contact', label: '联系方式', placeholder: 'QQ / Discord / 邮箱' },
+    {
+      key: 'slogan',
+      label: '一句话自介',
+      multiline: true,
+      placeholder: '想要加入的理由 / 一句给自己打 call 的话',
+    },
+    {
+      key: 'pitch',
+      label: '申请陈述（为什么适合）',
+      multiline: true,
+      placeholder: '为什么想加入这个模组 / 我能给 PL 团带来什么',
+    },
+    {
+      key: 'experience',
+      label: '跑团经历',
+      multiline: true,
+      placeholder: '接触 COC/TRPG 多久 / 主持或担任 PL 多久 / 玩过哪些经典模组',
+    },
+    { key: 'schedule', label: '可用时间', placeholder: '每周三/日晚 20:00-23:00 · 北京时间' },
+    {
+      key: 'preference',
+      label: '模组偏好 / 风格',
+      multiline: true,
+      placeholder: '偏好硬核 / 推理 / 恐怖 / 轻松 / 长团或短团',
+    },
+    {
+      key: 'notes',
+      label: '其他备注（可选）',
+      multiline: true,
+      placeholder: '对 KP / 团员的额外说明 / 警告内容',
+    },
+  ],
+  artSpec: {
+    background: { type: 'gradient', value: '#f8f4ec,#efe6d5' },
+    layers: [],
+    fonts: {
+      heading: '"Didot", "Bodoni MT", "Playfair Display", serif',
+      body: '"Source Han Serif SC", "Noto Serif SC", "Noto Sans SC", serif',
+      mono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+    },
+  },
+}
+
 /** 当前内置模板清单 */
-export const POSTER_TEMPLATES: PosterTemplate[] = [SELF_INTRO_TEMPLATE, RECRUIT_TEMPLATE]
+export const POSTER_TEMPLATES: PosterTemplate[] = [
+  SELF_INTRO_TEMPLATE,
+  RECRUIT_TEMPLATE,
+  APPLICATION_TEMPLATE,
+]
 
 export function getTemplateById(id: string): PosterTemplate | undefined {
   return POSTER_TEMPLATES.find((t) => t.id === id)
