@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Save, Trash2 } from 'lucide-react'
+import { ArrowLeft, Save, Trash2, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCharacterStore, createBlankCharacter } from '@/features/character'
+import { defaultStParser } from '@/features/character'
 import type { Character, CharacterInfo, CharacterStats } from '@/features/character'
 import { coc7DerivedCalc } from '@/features/character/derivedCalc'
+import { downloadText } from '@/lib/download'
 import { BasicInfoSection } from '@/features/character/components/BasicInfoSection'
 import { StatsSection } from '@/features/character/components/StatsSection'
 import { SkillsSection } from '@/features/character/components/SkillsSection'
@@ -128,6 +130,14 @@ export function CharacterEdit() {
     }
   }
 
+  function handleExportSt() {
+    if (!form) return
+    const text = defaultStParser.serialize(form)
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const baseName = form.info.name.trim() || '未命名'
+    downloadText(text, `${baseName}.st.${ts}.txt`, 'text/plain;charset=utf-8')
+  }
+
   async function handleDelete() {
     if (!form || isNew) return
     if (!confirm(`确认删除「${form.info.name || '未命名'}」？此操作不可恢复。`)) return
@@ -170,6 +180,12 @@ export function CharacterEdit() {
           </div>
         </div>
         <div className="flex gap-2">
+          {!isNew && (
+            <Button type="button" variant="outline" onClick={handleExportSt} disabled={saving}>
+              <Download />
+              导出 .st
+            </Button>
+          )}
           {!isNew && (
             <Button type="button" variant="outline" onClick={handleDelete} disabled={saving}>
               <Trash2 />

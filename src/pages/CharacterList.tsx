@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Copy, Trash2, User } from 'lucide-react'
+import { Plus, Copy, Trash2, User, FileCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -55,12 +55,20 @@ export function CharacterList() {
             管理你的所有 COC7 调查员 · 共 {characters.length} 张
           </p>
         </div>
-        <Button asChild variant="highlight">
-          <Link to="/characters/new">
-            <Plus />
-            新建角色卡
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link to="/st-importer">
+              <FileCode />
+              .st 导入
+            </Link>
+          </Button>
+          <Button asChild variant="highlight">
+            <Link to="/characters/new">
+              <Plus />
+              新建角色卡
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -99,7 +107,7 @@ function EmptyState() {
       <CardHeader className="items-center text-center">
         <CardTitle>还没有角色卡</CardTitle>
         <CardDescription>
-          点击右上角"新建角色卡"开始填写 · Phase 2-C 接入 .st 快捷导入
+          点击右上角"新建角色卡"开始填写，或用「.st 导入」从 dice! 工具一键迁移。
         </CardDescription>
       </CardHeader>
       <CardContent className="flex justify-center pb-8">

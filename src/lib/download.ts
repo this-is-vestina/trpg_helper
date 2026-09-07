@@ -1,12 +1,18 @@
 /**
  * 浏览器端触发文件下载
  * - downloadJson: 字符串/对象 → .json
+ * - downloadText: 纯文本 → 自定义 MIME/文件名（用于 .st / .txt 等）
  * - downloadBlob: Blob → 自定义文件名
  */
 
 export function downloadJson(data: unknown, filename: string) {
   const json = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
   const blob = new Blob([json], { type: 'application/json' })
+  triggerDownload(blob, filename)
+}
+
+export function downloadText(text: string, filename: string, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob([text], { type: mime })
   triggerDownload(blob, filename)
 }
 
