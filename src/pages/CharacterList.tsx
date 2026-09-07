@@ -5,13 +5,27 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useCharacterStore } from '@/features/character'
+import { MODULE_STATUS_LABELS, MODULE_STATUS_VALUES, type ModuleStatus } from '@/features/character/types'
 import { cn } from '@/lib/utils'
 
-const TAG_VARIANT: Record<string, 'pl' | 'pc' | 'npc' | 'kp' | 'default' | 'warm'> = {
+const TAG_VARIANT: Record<string, 'pl' | 'pc' | 'npc' | 'kp' | 'default' | 'warm' | 'outline'> = {
   PL: 'pl',
   PC: 'pc',
   NPC: 'npc',
   KP: 'kp',
+}
+
+/** 模块状态 tag 用 token 调色板直接配（Badge variant 不够用） */
+const MODULE_STATUS_CLASS: Record<ModuleStatus, string> = {
+  satellite: 'border-transparent bg-accent-soft text-accent',
+  ongoing: 'border-transparent bg-highlight-soft text-highlight',
+  paused: 'border-line bg-bg text-muted',
+  finished: 'border-transparent bg-warm-soft text-warm',
+  disbanded: 'border-transparent bg-danger/15 text-danger',
+}
+
+function isModuleStatus(t: string): t is ModuleStatus {
+  return (MODULE_STATUS_VALUES as string[]).includes(t)
 }
 
 /**
@@ -121,7 +135,7 @@ function CharacterCard({
             )}
           </Link>
           <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-2">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <Link
                 to={`/characters/${c.id}`}
                 className="block truncate text-base font-semibold text-ink hover:text-accent"
@@ -129,7 +143,7 @@ function CharacterCard({
                 {c.info.name || '未命名'}
               </Link>
               {c.info.module && (
-                <span className="shrink-0 text-xs text-muted">
+                <span className="text-base font-medium text-accent">
                   {c.info.module}
                   {c.info.hoSlot ? ` · Ho${c.info.hoSlot}` : ''}
                 </span>
@@ -141,15 +155,30 @@ function CharacterCard({
               {c.info.age ? ` · ${c.info.age}岁` : ''}
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1">
-              {c.tags.map((t) => (
-                <Badge
-                  key={t}
-                  variant={TAG_VARIANT[t] ?? 'outline'}
-                  className={cn('px-1.5 py-0 text-[10px]')}
-                >
-                  {t}
-                </Badge>
-              ))}
+              {c.tags.map((t) => {
+                if (isModuleStatus(t)) {
+                  return (
+                    <Badge
+                      key={t}
+                      className={cn(
+                        'border px-1.5 py-0 text-[10px]',
+                        MODULE_STATUS_CLASS[t],
+                      )}
+                    >
+                      {MODULE_STATUS_LABELS[t]}
+                    </Badge>
+                  )
+                }
+                return (
+                  <Badge
+                    key={t}
+                    variant={TAG_VARIANT[t] ?? 'outline'}
+                    className={cn('px-1.5 py-0 text-[10px]')}
+                  >
+                    {t}
+                  </Badge>
+                )
+              })}
             </div>
           </div>
         </div>
