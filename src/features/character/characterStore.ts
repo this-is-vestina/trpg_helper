@@ -66,17 +66,32 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   },
 
   async update(id, patch) {
-    const idx = get().characters.findIndex((c) => c.id === id)
-    if (idx === -1) return
-    const merged: Character = {
-      ...get().characters[idx],
-      ...patch,
-      updatedAt: Date.now(),
-    }
+    const list = get().characters
+    const idx = list.findIndex((c) => c.id === id)
+    const now = Date.now()
+    // upsert 语义：idx === -1 时把 patch 当作完整 Character 插入
+    // PROJECT_DESIGN §5.1: save = upsert by id
+    const merged: Character =
+      idx === -1
+        ? {
+            ...(patch as Character),
+            id,
+            createdAt: (patch as Character).createdAt ?? now,
+            updatedAt: now,
+          }
+        : {
+            ...list[idx],
+            ...patch,
+            updatedAt: now,
+          }
     await indexedDbCharacterRepo.save(merged)
     set((s) => {
       const next = s.characters.slice()
-      next[idx] = merged
+      if (idx === -1) {
+        next.unshift(merged)
+      } else {
+        next[idx] = merged
+      }
       return { characters: next.sort((a, b) => b.updatedAt - a.updatedAt) }
     })
   },
