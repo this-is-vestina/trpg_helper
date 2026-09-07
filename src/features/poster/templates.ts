@@ -149,11 +149,38 @@ export const APPLICATION_TEMPLATE: PosterTemplate = {
   },
 }
 
+/** 「互1互换表」模板（KP/PL 双方模组互换，信纸风双栏） */
+export const SWAP_TEMPLATE: PosterTemplate = {
+  id: 'swap-v1',
+  type: 'swap',
+  name: '互换表',
+  thumbnail: '',
+  size: { w: 1080, h: 1440 },
+  fields: [
+    {
+      key: 'note',
+      label: '小提示',
+      multiline: true,
+      placeholder: 'KP 侧列能带的模组，PL 侧列想跑的模组（可选说明文字）',
+    },
+  ],
+  artSpec: {
+    background: { type: 'gradient', value: '#f8f4ec,#efe6d5' },
+    layers: [],
+    fonts: {
+      heading: '"Didot", "Bodoni MT", "Playfair Display", serif',
+      body: '"Source Han Serif SC", "Noto Serif SC", "Noto Sans SC", serif',
+      mono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+    },
+  },
+}
+
 /** 当前内置模板清单 */
 export const POSTER_TEMPLATES: PosterTemplate[] = [
   SELF_INTRO_TEMPLATE,
   RECRUIT_TEMPLATE,
   APPLICATION_TEMPLATE,
+  SWAP_TEMPLATE,
 ]
 
 export function getTemplateById(id: string): PosterTemplate | undefined {

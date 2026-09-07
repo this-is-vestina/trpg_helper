@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ImagePlus, Download, RotateCcw, User, Megaphone, Send, Plus, X } from 'lucide-react'
+import { ImagePlus, Download, RotateCcw, User, Megaphone, Send, Plus, X, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -33,9 +33,10 @@ import {
   renderPoster,
   renderRecruitPoster,
   renderApplicationPoster,
+  renderSwapPoster,
   downloadCanvasAsPng,
 } from '@/features/poster'
-import type { CustomField, PosterTheme } from '@/features/poster'
+import type { CustomField, PosterTheme, SwapModItem } from '@/features/poster'
 import { useCharacterStore } from '@/features/character'
 import type { Character } from '@/features/character'
 
@@ -58,6 +59,9 @@ export function PosterStudio() {
   const [values, setValues] = useState<Record<string, string>>({})
   // 自定义字段（key / label / multiline），值仍存在 values 字典里
   const [customFields, setCustomFields] = useState<CustomFieldDraft[]>([])
+  // 互换表模板：KP/PL 两侧可增删的模组列表
+  const [kpMods, setKpMods] = useState<SwapModItem[]>([])
+  const [plMods, setPlMods] = useState<SwapModItem[]>([])
 
   const template = useMemo(
     () => POSTER_TEMPLATES.find((t) => t.id === templateId) ?? SELF_INTRO_TEMPLATE,
@@ -75,12 +79,14 @@ export function PosterStudio() {
     return characters.find((c) => c.id === characterId) ?? null
   }, [characterId, characters])
 
-  // 换模板时清空 values + 自定义字段
+  // 换模板时清空 values + 自定义字段 + 互换表列表
   const prevTemplateIdRef = useRef(templateId)
   useEffect(() => {
     if (prevTemplateIdRef.current !== templateId) {
       setValues({})
       setCustomFields([])
+      setKpMods([])
+      setPlMods([])
       prevTemplateIdRef.current = templateId
     }
   }, [templateId])
@@ -164,6 +170,15 @@ export function PosterStudio() {
         plantImage,
         customFields: customFieldsForRender,
       })
+    } else if (template.type === 'swap') {
+      renderSwapPoster(canvas, {
+        template,
+        kp: kpMods,
+        pl: plMods,
+        theme,
+        plantImage,
+        customFields: customFieldsForRender,
+      })
     }
   }, [
     template,
@@ -174,6 +189,8 @@ export function PosterStudio() {
     bodyFontId,
     plantImage,
     customFields,
+    kpMods,
+    plMods,
   ])
 
   function setField(key: string, v: string) {
@@ -198,6 +215,8 @@ export function PosterStudio() {
       baseName = selectedCharacter?.info.name.trim() || '角色卡'
     } else if (template.type === 'recruit') {
       baseName = `${values.moduleType?.slice(0, 16) || '模组'}-招募`
+    } else if (template.type === 'swap') {
+      baseName = '互换表'
     } else {
       baseName = `${values.name?.trim().slice(0, 16) || '角色'}-应征`
     }
@@ -206,7 +225,13 @@ export function PosterStudio() {
 
   const showCharacterBinding = template.type === 'self-intro'
   const applyFormLabel =
-    showCharacterBinding ? '3. 填写字段' : template.type === 'recruit' ? '2. 填写招募信息' : '2. 填写应征信息'
+    showCharacterBinding
+      ? '3. 填写字段'
+      : template.type === 'recruit'
+        ? '2. 填写招募信息'
+        : template.type === 'swap'
+          ? '2. 填写互换表'
+          : '2. 填写应征信息'
 
   return (
     <div className="flex flex-col gap-6 pb-12">
@@ -222,7 +247,9 @@ export function PosterStudio() {
             ? '角色卡'
             : template.type === 'recruit'
               ? '模组招募'
-              : '应征申请'}
+              : template.type === 'swap'
+                ? '互换表'
+                : '应征申请'}
         </Badge>
       </div>
 
@@ -362,6 +389,11 @@ export function PosterStudio() {
                     <Megaphone className="size-4 text-accent" />
                     {applyFormLabel}
                   </>
+                ) : template.type === 'swap' ? (
+                  <>
+                    <RefreshCw className="size-4 text-accent" />
+                    {applyFormLabel}
+                  </>
                 ) : (
                   <>
                     <Send className="size-4 text-accent" />
@@ -371,6 +403,21 @@ export function PosterStudio() {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
+              {template.type === 'swap' ? (
+                <>
+                  <SwapModList
+                    label="KP 侧 · 能带的模组"
+                    items={kpMods}
+                    onChange={setKpMods}
+                  />
+                  <SwapModList
+                    label="PL 侧 · 想跑的模组"
+                    items={plMods}
+                    onChange={setPlMods}
+                  />
+                </>
+              ) : (
+              <>
               {template.fields.map((f) => {
                 const current = values[f.key] ?? ''
                 return (
@@ -445,6 +492,8 @@ export function PosterStudio() {
                 <RotateCcw />
                 清空字段
               </Button>
+              </>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -595,6 +644,70 @@ function CustomFieldAdder({
           添加
         </Button>
       </div>
+    </div>
+  )
+}
+
+/** 互换表：一侧（KP / PL）的可增删模组小条目列表 */
+function SwapModList({
+  label,
+  items,
+  onChange,
+}: {
+  label: string
+  items: SwapModItem[]
+  onChange: (items: SwapModItem[]) => void
+}) {
+  function update(index: number, patch: Partial<SwapModItem>) {
+    onChange(items.map((it, i) => (i === index ? { ...it, ...patch } : it)))
+  }
+
+  function remove(index: number) {
+    onChange(items.filter((_, i) => i !== index))
+  }
+
+  function add() {
+    onChange([...items, { name: '', desc: '' }])
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label className="text-sm font-medium">{label}</Label>
+      {items.map((it, index) => (
+        <div key={index} className="flex flex-col gap-1.5 rounded-sm border border-line bg-surface p-3">
+          <div className="flex items-center gap-2">
+            <Input
+              value={it.name}
+              onChange={(e) => update(index, { name: e.target.value })}
+              placeholder="模组名"
+            />
+            <button
+              type="button"
+              onClick={() => remove(index)}
+              className="shrink-0 text-muted hover:text-danger"
+              aria-label="删除条目"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+          <Textarea
+            rows={2}
+            value={it.desc}
+            onChange={(e) => update(index, { desc: e.target.value })}
+            placeholder="一句话描述（可选）"
+          />
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="self-start"
+        onClick={add}
+      >
+        <Plus />
+        添加条目
+      </Button>
     </div>
   )
 }

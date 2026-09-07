@@ -1252,6 +1252,244 @@ function wrapText(
   return lines
 }
 
+// ====================== 互换表模板（左右双栏，KP/PL 各可增删模组列表） ======================
+
+export interface SwapModItem {
+  name: string
+  desc: string
+}
+
+export interface SwapPosterInput {
+  template: PosterTemplate
+  /** KP 侧模组列表 */
+  kp: SwapModItem[]
+  /** PL 侧模组列表 */
+  pl: SwapModItem[]
+  theme?: PosterTheme
+  plantImage?: HTMLImageElement | null
+  customFields?: CustomField[]
+}
+
+// 两栏之间的间距
+const SWAP_COLUMN_GAP = 24
+// 双栏时每栏可用宽度 = (CONTENT_W - gap) / 2
+const SWAP_COL_W = (CONTENT_W - SWAP_COLUMN_GAP) / 2
+
+export function renderSwapPoster(
+  canvas: HTMLCanvasElement,
+  input: SwapPosterInput,
+): void {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  const {
+    template,
+    kp,
+    pl,
+    theme = defaultTheme(),
+    plantImage = null,
+    customFields = [],
+  } = input
+
+  // 测量
+  const tempCanvas = document.createElement('canvas')
+  tempCanvas.width = template.size.w
+  tempCanvas.height = 4096
+  const tempCtx = tempCanvas.getContext('2d')!
+  let y = MARGIN
+  y = measureSwapHeader(tempCtx, y)
+  y = measureSwapColumns(tempCtx, y, kp, pl, theme)
+  for (const cf of customFields) {
+    y = measureParagraph(tempCtx, y, cf.value ?? '', theme)
+  }
+
+  const totalHeight = Math.max(y + MARGIN + HEIGHT_EXTRA, 800)
+
+  canvas.width = template.size.w
+  canvas.height = totalHeight
+  drawBackground(ctx, template.size.w, totalHeight, theme)
+
+  let cy = MARGIN
+  cy = drawSwapHeader(ctx, cy, theme)
+  cy = drawSwapColumns(ctx, cy, kp, pl, theme)
+  for (const cf of customFields) {
+    cy = drawParagraph(ctx, cy, cf.value ?? '', theme)
+  }
+
+  drawFooter(ctx, totalHeight, theme)
+  drawPlantDecoration(ctx, template.size.w, totalHeight, plantImage)
+}
+
+function drawSwapHeader(
+  ctx: CanvasRenderingContext2D,
+  y: number,
+  theme: PosterTheme,
+): number {
+  ctx.fillStyle = theme.palette.ink
+  ctx.font = `700 56px ${theme.headingFont}`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const title = '互 1 互 换 表'
+  ctx.fillText(title, MARGIN + CONTENT_W / 2, y + 30)
+  let cy = y + 90
+
+  // 副标题：双方意向说明
+  ctx.fillStyle = theme.palette.muted
+  ctx.font = `400 18px ${theme.bodyFont}`
+  ctx.fillText(
+    'KP 侧列能带的模组，PL 侧列想跑的模组',
+    MARGIN + CONTENT_W / 2,
+    cy,
+  )
+  cy += 30 + 20
+
+  drawSectionDivider(ctx, cy, theme)
+  return cy + 30
+}
+
+function measureSwapHeader(_ctx: CanvasRenderingContext2D, y: number): number {
+  return y + 90 + 30 + 20 + 30
+}
+
+function drawSwapColumns(
+  ctx: CanvasRenderingContext2D,
+  y: number,
+  kp: SwapModItem[],
+  pl: SwapModItem[],
+  theme: PosterTheme,
+): number {
+  const colTop = y
+  drawSwapColumn(ctx, MARGIN, colTop, SWAP_COL_W, 'KP 侧 · 能带的模组', kp, theme)
+  drawSwapColumn(
+    ctx,
+    MARGIN + SWAP_COL_W + SWAP_COLUMN_GAP,
+    colTop,
+    SWAP_COL_W,
+    'PL 侧 · 想跑的模组',
+    pl,
+    theme,
+  )
+  const h = Math.max(
+    measureSwapColumn(ctx, kp, theme),
+    measureSwapColumn(ctx, pl, theme),
+  )
+  return colTop + h + LINE_GAP + 10
+}
+
+function measureSwapColumns(
+  ctx: CanvasRenderingContext2D,
+  y: number,
+  kp: SwapModItem[],
+  pl: SwapModItem[],
+  theme: PosterTheme,
+): number {
+  const h = Math.max(
+    measureSwapColumn(ctx, kp, theme),
+    measureSwapColumn(ctx, pl, theme),
+  )
+  return y + h + LINE_GAP + 10
+}
+
+/**
+ * 单栏：标题（在本栏自己的 x 处，避免双栏标题重叠）+ 逐条模组小卡片。
+ * 样式：半透明卡片、左侧浅蓝竖条（无顶部蓝线）、模组名大 / 描述小浅色。
+ */
+function drawSwapColumn(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  title: string,
+  items: SwapModItem[],
+  theme: PosterTheme,
+): number {
+  // 标题必须用本栏 x 绘制（不能复用 drawSectionTitle——它写死 MARGIN，会导致双栏标题重叠）
+  ctx.fillStyle = theme.palette.muted
+  ctx.font = `500 15px ${theme.bodyFont}`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(`— ${title} —`, x, y)
+  let cy = y + 30
+
+  if (items.length === 0) {
+    ctx.fillStyle = theme.palette.muted
+    ctx.font = `400 14px ${theme.bodyFont}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('— 暂无 —', x + w / 2, cy + 20)
+    return 30 + 40 + 10
+  }
+
+  const padX = 16
+  const padY = 14
+  const titleFont = `600 20px ${theme.bodyFont}`
+  const descFont = `400 14px ${theme.bodyFont}`
+
+  for (const it of items) {
+    const nameLines = wrapText(ctx, it.name, w - padX * 2, titleFont)
+    const descLines = it.desc
+      ? wrapText(ctx, it.desc, w - padX * 2, descFont)
+      : []
+    const lineH = 26
+    const titleH = nameLines.length * lineH
+    const descH = descLines.length * 20
+    const cardH = padY * 2 + Math.max(titleH, 24) + (descH ? descH + 6 : 0)
+
+    drawSemiTransparentBox(ctx, theme.palette.card, x, cy, w, cardH)
+    // 左侧竖条：跟随主题的强调色柔和版（砖红主题 → 浅红竖线）
+    ctx.fillStyle = theme.palette.accentSoft
+    ctx.fillRect(x, cy, 4, cardH)
+
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    let iy = cy + padY
+    ctx.fillStyle = theme.palette.ink
+    ctx.font = titleFont
+    nameLines.forEach((line) => {
+      ctx.fillText(line, x + padX, iy)
+      iy += lineH
+    })
+    if (descLines.length) {
+      ctx.fillStyle = theme.palette.muted
+      ctx.font = descFont
+      descLines.forEach((line) => {
+        ctx.fillText(line, x + padX, iy + 6)
+        iy += 20
+      })
+    }
+    cy += cardH + 10
+  }
+
+  return cy - y
+}
+
+/** 单栏内容高度（用于左右对齐取 max） */
+function measureSwapColumn(
+  ctx: CanvasRenderingContext2D,
+  items: SwapModItem[],
+  theme: PosterTheme,
+): number {
+  const padX = 16
+  const padY = 14
+  const lineH = 26
+  const descLineH = 20
+  let cy = 30 // section title 空间
+  const titleFont = `600 20px ${theme.bodyFont}`
+  const descFont = `400 14px ${theme.bodyFont}`
+  if (items.length === 0) return 30 + 40 + 10
+  for (const it of items) {
+    const nameLines = wrapText(ctx, it.name, SWAP_COL_W - padX * 2, titleFont)
+    const descLines = it.desc
+      ? wrapText(ctx, it.desc, SWAP_COL_W - padX * 2, descFont)
+      : []
+    const titleH = nameLines.length * lineH
+    const descH = descLines.length * descLineH
+    const cardH = padY * 2 + Math.max(titleH, 24) + (descH ? descH + 6 : 0)
+    cy += cardH + 10
+  }
+  return cy
+}
+
 export function downloadCanvasAsPng(
   canvas: HTMLCanvasElement,
   filename: string,

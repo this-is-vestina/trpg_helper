@@ -102,7 +102,7 @@ export interface Character {
 
 // ===== 海报相关类型（也属于 character 域，因为 .st / 导出都涉及）=====
 
-export type PosterType = 'self-intro' | 'recruit' | 'apply'
+export type PosterType = 'self-intro' | 'recruit' | 'apply' | 'swap'
 
 export interface PosterField {
   key: string
