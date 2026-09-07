@@ -16,9 +16,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { SelectPopover, SelectItem } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import {
   POSTER_TEMPLATES,
   SELF_INTRO_TEMPLATE,
+  POSTER_PALETTES,
+  POSTER_FONTS,
+  getPaletteById,
+  getFontById,
   renderPoster,
   renderRecruitPoster,
   downloadCanvasAsPng,
@@ -29,6 +34,8 @@ import type { Character } from '@/features/character'
 export function PosterStudio() {
   const [templateId, setTemplateId] = useState(SELF_INTRO_TEMPLATE.id)
   const [characterId, setCharacterId] = useState<string>('none')
+  const [paletteId, setPaletteId] = useState(POSTER_PALETTES[0].id)
+  const [fontId, setFontId] = useState(POSTER_FONTS[0].id)
   // 通用字段值：key → 字符串
   const [values, setValues] = useState<Record<string, string>>({})
 
@@ -87,16 +94,18 @@ export function PosterStudio() {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const theme = { palette: getPaletteById(paletteId), fonts: getFontById(fontId) }
     if (template.type === 'self-intro') {
       renderPoster(canvas, {
         template,
         character: selectedCharacter,
         values: { slogan: values.slogan ?? '', background: values.background ?? '' },
+        theme,
       })
     } else if (template.type === 'recruit') {
-      renderRecruitPoster(canvas, { template, values })
+      renderRecruitPoster(canvas, { template, values, theme })
     }
-  }, [template, selectedCharacter, values])
+  }, [template, selectedCharacter, values, paletteId, fontId])
 
   function setField(key: string, v: string) {
     if (key === 'slogan') sloganTouchedRef.current = true
@@ -153,8 +162,64 @@ export function PosterStudio() {
                 ))}
               </SelectPopover>
               <p className="mt-2 text-xs text-muted">
-                {template.size.w} × {template.size.h} px · PNG 导出按此分辨率
+                信纸风格 · 高度自适应内容
               </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">选配色</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2">
+                {POSTER_PALETTES.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPaletteId(p.id)}
+                    className={cn(
+                      'group flex items-center gap-2 rounded-sm border p-2 text-left transition-colors',
+                      paletteId === p.id
+                        ? 'border-accent bg-accent-soft'
+                        : 'border-line bg-surface hover:border-accent/50',
+                    )}
+                  >
+                    <div className="flex shrink-0">
+                      <div
+                        className="size-5 rounded-l-sm border border-line"
+                        style={{ background: p.bgTop }}
+                      />
+                      <div
+                        className="size-5 border border-line"
+                        style={{ background: p.bgBot }}
+                      />
+                      <div
+                        className="size-5 border border-line"
+                        style={{ background: p.ink }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-medium">{p.name}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">选字体</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SelectPopover value={fontId} onValueChange={setFontId}>
+                {POSTER_FONTS.map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.name}
+                  </SelectItem>
+                ))}
+              </SelectPopover>
             </CardContent>
           </Card>
 
@@ -211,19 +276,11 @@ export function PosterStudio() {
                 const current = values[f.key] ?? ''
                 return (
                   <div key={f.key} className="flex flex-col gap-1.5">
-                    <Label htmlFor={`field-${f.key}`}>
-                      {f.label}
-                      {f.maxLength && (
-                        <span className="ml-2 text-xs text-muted">
-                          {current.length} / {f.maxLength}
-                        </span>
-                      )}
-                    </Label>
+                    <Label htmlFor={`field-${f.key}`}>{f.label}</Label>
                     {f.multiline ? (
                       <Textarea
                         id={`field-${f.key}`}
                         rows={f.key === 'summary' || f.key === 'background' ? 4 : 2}
-                        maxLength={f.maxLength}
                         placeholder={f.placeholder}
                         value={current}
                         onChange={(e) => setField(f.key, e.target.value)}
@@ -231,7 +288,6 @@ export function PosterStudio() {
                     ) : (
                       <Input
                         id={`field-${f.key}`}
-                        maxLength={f.maxLength}
                         placeholder={f.placeholder}
                         value={current}
                         onChange={(e) => setField(f.key, e.target.value)}

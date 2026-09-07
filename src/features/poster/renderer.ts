@@ -1,31 +1,32 @@
 /**
- * 海报 Canvas 2D 渲染器
- * - 坐标以 1080×1440 为基准
- * - renderPoster(): 调查员自介模板
- * - renderRecruitPoster(): 模组招募模板（Phase 3-A）
- * - 颜色用项目 tokens 硬编码
+ * 海报 Canvas 2D 渲染器（信纸风格）
+ *
+ * 设计：
+ * - 单栏纵向 flow layout：每个 section 高度按内容自动算，下一个 section 用上一个的 y
+ * - canvas 高度动态（根据内容总和设置）
+ * - 配色 / 字体可入参（theme），默认信纸风
+ * - 右侧简单植物图鉴装饰（camélia 分支）
  */
 
 import type { Character, CharacterStats, PosterTemplate } from '@/features/character/types'
+import { getPaletteById, getFontById, type PosterPalette, type PosterFont } from './theme'
 
-// ===== 颜色硬编码（与 globals.css tokens 对齐）=====
+// ===== 信纸风格布局常量 =====
+const MARGIN = 80
+const CONTENT_W = 1080 - MARGIN * 2
+const LINE_GAP = 8
 
-const COLOR = {
-  bgTop: '#f4ecde',
-  bgBot: '#e8d9c0',
-  accent: '#4fb3a4',
-  accentSoft: '#dff0ec',
-  highlight: '#e68a3c',
-  highlightSoft: '#f7e1cc',
-  warm: '#d4a574',
-  warmSoft: '#f0e3d0',
-  ink: '#2a2520',
-  muted: '#8a7e6d',
-  line: '#c8b89e',
-  danger: '#c25450',
-} as const
+export interface PosterTheme {
+  palette: PosterPalette
+  fonts: PosterFont
+}
 
-// ====================== 自介模板输入/渲染 ======================
+function defaultTheme(): PosterTheme {
+  return {
+    palette: getPaletteById('paper-blue'),
+    fonts: getFontById('didot-source-serif'),
+  }
+}
 
 export interface PosterRenderInput {
   template: PosterTemplate
@@ -34,188 +35,298 @@ export interface PosterRenderInput {
     slogan: string
     background: string
   }
+  theme?: PosterTheme
 }
+
+export interface RecruitPosterInput {
+  template: PosterTemplate
+  values: Record<string, string>
+  theme?: PosterTheme
+}
+
+// ====================== 入口 ======================
 
 export function renderPoster(canvas: HTMLCanvasElement, input: PosterRenderInput): void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  const { template, character, values } = input
+  const { template, character, values, theme = defaultTheme() } = input
+
+  // 1. 用 offscreen canvas 先计算总高度
+  const tempCanvas = document.createElement('canvas')
+  tempCanvas.width = template.size.w
+  tempCanvas.height = 4096
+  const tempCtx = tempCanvas.getContext('2d')!
+  let y = MARGIN
+  y = measureSelfIntroHeader(tempCtx, y, character, theme)
+  y = measureSelfIntroSlogan(tempCtx, y, values.slogan, theme)
+  y = measureSelfIntroModule(tempCtx, y, character, theme)
+  y = measureSelfIntroStats(tempCtx, y, character, theme)
+  y = measureSelfIntroDerived(tempCtx, y, character, theme)
+  y = measureSelfIntroSkills(tempCtx, y, character, theme)
+  y = measureSelfIntroBackground(tempCtx, y, values.background, theme)
+  y = measureFooter(tempCtx, y, theme)
+
+  const totalHeight = Math.max(y + MARGIN, 800)
+
+  // 2. 实际绘制
   canvas.width = template.size.w
-  canvas.height = template.size.h
+  canvas.height = totalHeight
+  drawBackground(ctx, template.size.w, totalHeight, theme)
+  drawBotanicalDecoration(ctx, template.size.w, totalHeight, theme)
 
-  drawSelfIntroBackground(ctx, template.size.w, template.size.h)
-  drawSelfIntroHeader(ctx, template.size.w)
-  drawIdentity(ctx, character)
-  drawSlogan(ctx, values.slogan)
-  drawModule(ctx, character)
-  drawStatsGrid(ctx, character)
-  drawDerived(ctx, character)
-  drawSkills(ctx, character)
-  drawSelfIntroBackground_(ctx, values.background)
-  drawFooter(ctx, template.size.w, template.size.h)
-}
-
-// ====================== 招募模板输入/渲染 ======================
-
-export interface RecruitPosterInput {
-  template: PosterTemplate
-  values: Record<string, string>
+  let cy = MARGIN
+  cy = drawSelfIntroHeader(ctx, cy, character, theme)
+  cy = drawSelfIntroSlogan(ctx, cy, values.slogan, theme)
+  cy = drawSelfIntroModule(ctx, cy, character, theme)
+  cy = drawSelfIntroStats(ctx, cy, character, theme)
+  cy = drawSelfIntroDerived(ctx, cy, character, theme)
+  cy = drawSelfIntroSkills(ctx, cy, character, theme)
+  cy = drawSelfIntroBackground(ctx, cy, values.background, theme)
+  cy = drawFooter(ctx, cy, theme)
 }
 
 export function renderRecruitPoster(canvas: HTMLCanvasElement, input: RecruitPosterInput): void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  const { template, values } = input
-  canvas.width = template.size.w
-  canvas.height = template.size.h
+  const { template, values, theme = defaultTheme() } = input
 
-  drawRecruitBackground(ctx, template.size.w, template.size.h)
-  drawRecruitHeader(ctx, template.size.w, values.status ?? '', values.moduleType ?? '')
-  drawRecruitModuleName(ctx, template.size.w)
-  drawRecruitSummary(ctx, values.summary ?? '')
-  drawRecruitSelfIntro(ctx, values.selfIntro ?? '')
-  drawRecruitInfoList(ctx, [
+  // 先测量
+  const tempCanvas = document.createElement('canvas')
+  tempCanvas.width = template.size.w
+  tempCanvas.height = 4096
+  const tempCtx = tempCanvas.getContext('2d')!
+  let y = MARGIN
+  y = measureRecruitHeader(tempCtx, y, values, theme)
+  y = measureRecruitSummary(tempCtx, y, values.summary ?? '', theme)
+  y = measureRecruitSelfIntro(tempCtx, y, values.selfIntro ?? '', theme)
+  y = measureRecruitInfoList(tempCtx, y, [
     { label: '开团时间', value: values.openTime ?? '' },
     { label: '招募需求', value: values.requirements ?? '' },
     { label: '跑团时间', value: values.schedule ?? '' },
     { label: '平台', value: values.platform ?? '' },
     { label: '规则', value: values.rules ?? '' },
     { label: '收费', value: values.fee ?? '' },
-  ])
-  drawRecruitContact(ctx, values.contact ?? '')
-  drawRecruitNotes(ctx, values.notes ?? '')
-  drawFooter(ctx, template.size.w, template.size.h)
+  ], theme)
+  y = measureRecruitContact(tempCtx, y, values.contact ?? '', theme)
+  y = measureRecruitNotes(tempCtx, y, values.notes ?? '', theme)
+  y = measureFooter(tempCtx, y, theme)
+
+  const totalHeight = Math.max(y + MARGIN, 800)
+
+  canvas.width = template.size.w
+  canvas.height = totalHeight
+  drawBackground(ctx, template.size.w, totalHeight, theme)
+  drawBotanicalDecoration(ctx, template.size.w, totalHeight, theme)
+
+  let cy = MARGIN
+  cy = drawRecruitHeader(ctx, cy, values, theme)
+  cy = drawRecruitSummary(ctx, cy, values.summary ?? '', theme)
+  cy = drawRecruitSelfIntro(ctx, cy, values.selfIntro ?? '', theme)
+  cy = drawRecruitInfoList(ctx, cy, [
+    { label: '开团时间', value: values.openTime ?? '' },
+    { label: '招募需求', value: values.requirements ?? '' },
+    { label: '跑团时间', value: values.schedule ?? '' },
+    { label: '平台', value: values.platform ?? '' },
+    { label: '规则', value: values.rules ?? '' },
+    { label: '收费', value: values.fee ?? '' },
+  ], theme)
+  cy = drawRecruitContact(ctx, cy, values.contact ?? '', theme)
+  cy = drawRecruitNotes(ctx, cy, values.notes ?? '', theme)
+  cy = drawFooter(ctx, cy, theme)
 }
 
-// ============================ 自介模板绘制 ============================
+// ====================== 共用绘制 ======================
 
-function drawSelfIntroBackground(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  const g = ctx.createLinearGradient(0, 0, 0, height)
-  g.addColorStop(0, COLOR.bgTop)
-  g.addColorStop(1, COLOR.bgBot)
+function drawBackground(ctx: CanvasRenderingContext2D, w: number, h: number, theme: PosterTheme) {
+  const g = ctx.createLinearGradient(0, 0, 0, h)
+  g.addColorStop(0, theme.palette.bgTop)
+  g.addColorStop(1, theme.palette.bgBot)
   ctx.fillStyle = g
-  ctx.fillRect(0, 0, width, height)
-
-  ctx.fillStyle = COLOR.accentSoft
-  ctx.beginPath()
-  ctx.moveTo(0, 0)
-  ctx.lineTo(140, 0)
-  ctx.lineTo(0, 140)
-  ctx.closePath()
-  ctx.fill()
-
-  ctx.fillStyle = COLOR.warmSoft
-  ctx.beginPath()
-  ctx.moveTo(width, height)
-  ctx.lineTo(width - 140, height)
-  ctx.lineTo(width, height - 140)
-  ctx.closePath()
-  ctx.fill()
+  ctx.fillRect(0, 0, w, h)
 }
 
-function drawSelfIntroHeader(ctx: CanvasRenderingContext2D, width: number) {
-  ctx.strokeStyle = COLOR.line
-  ctx.lineWidth = 1
+/** 右侧简单植物图鉴装饰（camélia 分支：曲线 + 小花点） */
+function drawBotanicalDecoration(ctx: CanvasRenderingContext2D, w: number, h: number, theme: PosterTheme) {
+  ctx.save()
+  ctx.strokeStyle = theme.palette.muted
+  ctx.fillStyle = theme.palette.muted
+  ctx.lineWidth = 1.5
+  ctx.globalAlpha = 0.5
+
+  const startX = w - 140
+  const startY = h - 80
+
+  // 主分支：曲线
   ctx.beginPath()
-  ctx.moveTo(60, 60)
-  ctx.lineTo(width - 60, 60)
+  ctx.moveTo(startX, startY)
+  ctx.bezierCurveTo(startX + 30, startY - 100, startX - 20, startY - 200, startX + 10, startY - 320)
   ctx.stroke()
 
-  ctx.fillStyle = COLOR.muted
-  ctx.font = `500 22px serif`
-  ctx.textBaseline = 'middle'
-  ctx.textAlign = 'left'
-  ctx.fillText('TRPG · INVESTIGATOR PROFILE', 60, 96)
+  // 侧枝 1
+  ctx.beginPath()
+  ctx.moveTo(startX + 5, startY - 120)
+  ctx.quadraticCurveTo(startX + 40, startY - 160, startX + 60, startY - 180)
+  ctx.stroke()
 
-  ctx.fillStyle = COLOR.accent
-  ctx.fillRect(width - 100, 80, 40, 6)
-  ctx.fillStyle = COLOR.warm
-  ctx.fillRect(width - 50, 80, 6, 40)
+  // 侧枝 2
+  ctx.beginPath()
+  ctx.moveTo(startX + 8, startY - 240)
+  ctx.quadraticCurveTo(startX - 30, startY - 280, startX - 50, startY - 300)
+  ctx.stroke()
+
+  // 花点（主分支上 4 个）
+  const dots = [
+    [startX + 5, startY - 80],
+    [startX + 12, startY - 160],
+    [startX + 8, startY - 240],
+    [startX + 10, startY - 310],
+    [startX + 60, startY - 180],
+    [startX - 50, startY - 300],
+  ]
+  for (const [x, y] of dots) {
+    ctx.beginPath()
+    ctx.arc(x, y, 3, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  ctx.restore()
 }
 
-function drawIdentity(ctx: CanvasRenderingContext2D, c: Character | null) {
+function drawSectionDivider(ctx: CanvasRenderingContext2D, y: number, theme: PosterTheme) {
+  ctx.strokeStyle = theme.palette.line
+  ctx.lineWidth = 0.5
+  ctx.setLineDash([2, 3])
+  ctx.beginPath()
+  ctx.moveTo(MARGIN, y)
+  ctx.lineTo(MARGIN + CONTENT_W, y)
+  ctx.stroke()
+  ctx.setLineDash([])
+}
+
+function drawSectionTitle(ctx: CanvasRenderingContext2D, y: number, title: string, theme: PosterTheme) {
+  ctx.fillStyle = theme.palette.muted
+  ctx.font = `500 16px ${theme.fonts.body}`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(`— ${title} —`, MARGIN, y)
+}
+
+function drawFooter(ctx: CanvasRenderingContext2D, y: number, theme: PosterTheme): number {
+  const gap = 40
+  const lineY = y + gap
+  drawSectionDivider(ctx, lineY, theme)
+
+  ctx.fillStyle = theme.palette.muted
+  ctx.font = `400 14px ${theme.fonts.body}`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('Made with TRPG Helper · 本地生成 · 数据不上传', MARGIN + CONTENT_W / 2, lineY + 24)
+  return lineY + 40
+}
+
+function measureFooter(_ctx: CanvasRenderingContext2D, y: number, _theme: PosterTheme): number {
+  return y + 40 + 40
+}
+
+// ====================== 自介模板 ======================
+
+function drawSelfIntroHeader(ctx: CanvasRenderingContext2D, y: number, c: Character | null, theme: PosterTheme): number {
   const name = c?.info.name.trim() || '未命名调查员'
   const player = c?.info.player.trim()
   const occupation = c?.info.occupation.trim()
-  const occupationNo = c?.info.occupationNo
+  const era = c?.info.era.trim()
 
-  ctx.fillStyle = COLOR.ink
-  ctx.font = `700 56px serif`
-  ctx.textAlign = 'left'
+  // 大字标题
+  ctx.fillStyle = theme.palette.ink
+  ctx.font = `italic 700 64px ${theme.fonts.heading}`
+  ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  ctx.fillText(truncate(name, 14), 60, 140)
+  ctx.fillText(truncate(name, 14), MARGIN + CONTENT_W / 2, y)
+  let cy = y + 90
 
-  ctx.fillStyle = COLOR.muted
-  ctx.font = `400 24px sans-serif`
-  ctx.fillText(
-    [player && `PL · ${player}`, occupation && occupation, occupationNo && `№ ${occupationNo}`]
-      .filter(Boolean)
-      .join('  ·  ') || '— 暂无身份信息 —',
-    60,
-    220,
-  )
-
+  // 副标题：PL · 职业 · 时代
   const meta: string[] = []
+  if (player) meta.push(`PL · ${player}`)
+  if (occupation) meta.push(occupation)
+  if (era) meta.push(era)
   if (c?.info.age) meta.push(`${c.info.age} 岁`)
-  if (c?.info.gender) meta.push(c.info.gender)
-  if (c?.info.residence) meta.push(c.info.residence)
-  if (c?.info.era) meta.push(c.info.era)
+
   if (meta.length > 0) {
-    ctx.fillStyle = COLOR.warm
-    ctx.font = `500 18px sans-serif`
-    ctx.fillText(meta.join('  ·  '), 60, 258)
+    ctx.fillStyle = theme.palette.muted
+    ctx.font = `400 20px ${theme.fonts.body}`
+    ctx.fillText(meta.join('  ·  '), MARGIN + CONTENT_W / 2, cy)
+    cy += 30
   }
+
+  cy += 30
+  drawSectionDivider(ctx, cy, theme)
+  return cy + 30
 }
 
-function drawSlogan(ctx: CanvasRenderingContext2D, slogan: string) {
-  if (!slogan) return
+function measureSelfIntroHeader(_ctx: CanvasRenderingContext2D, y: number, c: Character | null, _theme: PosterTheme): number {
+  let cy = y + 90
+  const player = c?.info.player.trim()
+  const occupation = c?.info.occupation.trim()
+  if (player || occupation) cy += 30
+  cy += 30 + 30
+  return cy
+}
+
+function drawSelfIntroSlogan(ctx: CanvasRenderingContext2D, y: number, slogan: string, theme: PosterTheme): number {
+  if (!slogan.trim()) return y
   const text = slogan.trim()
-  const y = 308
-  const padX = 24
-  const padY = 18
-  const boxW = 1080 - 60 * 2
-  const lineH = 26
-  const lines = wrapText(ctx, text, boxW - padX * 2, `italic 500 22px serif`)
-  const boxH = padY * 2 + lineH * lines.length
-
-  ctx.fillStyle = COLOR.warmSoft
-  ctx.fillRect(60, y, boxW, boxH)
-  ctx.fillStyle = COLOR.warm
-  ctx.fillRect(60, y, 6, boxH)
-
-  ctx.fillStyle = COLOR.ink
-  ctx.font = `italic 500 22px serif`
+  ctx.font = `italic 400 22px ${theme.fonts.body}`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
+  const lines = wrapText(ctx, text, CONTENT_W - 40, `italic 400 22px ${theme.fonts.body}`)
+  const lineH = 30
+  const pad = 20
+  const boxH = pad * 2 + lineH * lines.length
+
+  ctx.fillStyle = theme.palette.card
+  ctx.fillRect(MARGIN, y, CONTENT_W, boxH)
+  ctx.fillStyle = theme.palette.warm
+  ctx.fillRect(MARGIN, y, 4, boxH)
+
+  ctx.fillStyle = theme.palette.ink
   lines.forEach((line, i) => {
-    ctx.fillText(line, 60 + padX, y + padY + i * lineH)
+    ctx.fillText(line, MARGIN + 20, y + pad + i * lineH)
   })
+  return y + boxH + LINE_GAP + 10
 }
 
-function drawModule(ctx: CanvasRenderingContext2D, c: Character | null) {
-  if (!c?.info.module) return
-  ctx.fillStyle = COLOR.accent
-  ctx.font = `600 22px sans-serif`
-  ctx.textAlign = 'left'
+function measureSelfIntroSlogan(ctx: CanvasRenderingContext2D, y: number, slogan: string, theme: PosterTheme): number {
+  if (!slogan.trim()) return y
+  ctx.font = `italic 400 22px ${theme.fonts.body}`
+  const lines = wrapText(ctx, slogan.trim(), CONTENT_W - 40, `italic 400 22px ${theme.fonts.body}`)
+  return y + 40 + 30 * lines.length + LINE_GAP + 10
+}
+
+function drawSelfIntroModule(ctx: CanvasRenderingContext2D, y: number, c: Character | null, theme: PosterTheme): number {
+  if (!c?.info.module) return y
+  ctx.fillStyle = theme.palette.accent
+  ctx.font = `600 22px ${theme.fonts.body}`
+  ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   const hoLabel = c.info.hoSlot ? ` · Ho ${c.info.hoSlot}` : ''
-  ctx.fillText(`「${c.info.module}」${hoLabel}`, 60, 540)
+  ctx.fillText(`「${c.info.module}」${hoLabel}`, MARGIN + CONTENT_W / 2, y)
+  return y + 30 + LINE_GAP + 10
 }
 
-function drawStatsGrid(ctx: CanvasRenderingContext2D, c: Character | null) {
-  ctx.fillStyle = COLOR.muted
-  ctx.font = `600 18px sans-serif`
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('— 核心属性 —', 60, 620)
+function measureSelfIntroModule(_ctx: CanvasRenderingContext2D, y: number, c: Character | null, _theme: PosterTheme): number {
+  if (!c?.info.module) return y
+  return y + 30 + LINE_GAP + 10
+}
 
-  const gridX = 60
-  const gridY = 660
-  const cellW = (1080 - 60 * 2 - 16 * 2) / 3
-  const cellH = 100
+function drawSelfIntroStats(ctx: CanvasRenderingContext2D, y: number, c: Character | null, theme: PosterTheme): number {
+  drawSectionTitle(ctx, y, '核心属性', theme)
+  let cy = y + 30
 
+  const gridY = cy
+  const cellW = (CONTENT_W - 24) / 3
+  const cellH = 88
   const stats: Array<[keyof CharacterStats, string]> = [
     ['str', 'STR 力量'],
     ['dex', 'DEX 敏捷'],
@@ -231,73 +342,77 @@ function drawStatsGrid(ctx: CanvasRenderingContext2D, c: Character | null) {
   stats.forEach(([key, label], idx) => {
     const col = idx % 3
     const row = Math.floor(idx / 3)
-    const x = gridX + col * (cellW + 16)
-    const y = gridY + row * (cellH + 12)
+    const x = MARGIN + col * (cellW + 12)
+    const yy = gridY + row * (cellH + 12)
     const v = c?.stats[key] ?? 0
 
-    ctx.fillStyle = 'rgba(255,255,255,0.55)'
-    ctx.fillRect(x, y, cellW, cellH)
-    ctx.fillStyle = COLOR.accent
-    ctx.fillRect(x, y, 4, cellH)
-    ctx.fillStyle = COLOR.muted
-    ctx.font = `500 18px sans-serif`
+    ctx.fillStyle = theme.palette.card
+    ctx.fillRect(x, yy, cellW, cellH)
+    ctx.fillStyle = theme.palette.accent
+    ctx.fillRect(x, yy, 3, cellH)
+
+    ctx.fillStyle = theme.palette.muted
+    ctx.font = `500 16px ${theme.fonts.body}`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
-    ctx.fillText(label, x + 16, y + 14)
-    ctx.fillStyle = COLOR.ink
-    ctx.font = `700 44px monospace`
+    ctx.fillText(label, x + 12, yy + 12)
+
+    ctx.fillStyle = theme.palette.ink
+    ctx.font = `700 36px ${theme.fonts.mono}`
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
-    ctx.fillText(String(v), x + cellW - 16, y + cellH / 2 + 6)
+    ctx.fillText(String(v), x + cellW - 12, yy + cellH / 2 + 6)
   })
+  return gridY + 3 * (cellH + 12) + LINE_GAP + 10
 }
 
-function drawDerived(ctx: CanvasRenderingContext2D, c: Character | null) {
-  ctx.fillStyle = COLOR.muted
-  ctx.font = `600 18px sans-serif`
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('— 衍生值 —', 60, 1010)
+function measureSelfIntroStats(_ctx: CanvasRenderingContext2D, y: number, _c: Character | null, _theme: PosterTheme): number {
+  return y + 30 + 3 * (88 + 12) + LINE_GAP + 10
+}
+
+function drawSelfIntroDerived(ctx: CanvasRenderingContext2D, y: number, c: Character | null, theme: PosterTheme): number {
+  drawSectionTitle(ctx, y, '衍生值', theme)
+  let cy = y + 30
 
   const items = [
-    { label: 'HP', v: c?.derived.hp ?? 0, color: COLOR.danger },
-    { label: 'SAN', v: c?.derived.san ?? 0, color: COLOR.accent },
-    { label: 'MP', v: c?.derived.mp ?? 0, color: COLOR.highlight },
-    { label: 'MOV', v: c?.derived.mov ?? 0, color: COLOR.warm },
-    { label: 'Build', v: c?.derived.build ?? 0, color: COLOR.muted },
+    { label: 'HP', v: c?.derived.hp ?? 0 },
+    { label: 'SAN', v: c?.derived.san ?? 0 },
+    { label: 'MP', v: c?.derived.mp ?? 0 },
+    { label: 'MOV', v: c?.derived.mov ?? 0 },
+    { label: 'Build', v: c?.derived.build ?? 0 },
   ]
-  const startX = 60
-  const cellW = (1080 - 60 * 2 - 16 * 4) / 5
-  const cellH = 80
-  const y = 1050
+  const cellW = (CONTENT_W - 16 * 4) / 5
+  const cellH = 68
 
   items.forEach((it, i) => {
-    const x = startX + i * (cellW + 16)
-    ctx.fillStyle = COLOR.accentSoft
-    ctx.fillRect(x, y, cellW, cellH)
-    ctx.fillStyle = it.color
-    ctx.fillRect(x, y, cellW, 4)
+    const x = MARGIN + i * (cellW + 16)
+    ctx.fillStyle = theme.palette.accentSoft
+    ctx.fillRect(x, cy, cellW, cellH)
+    ctx.fillStyle = theme.palette.accent
+    ctx.fillRect(x, cy, cellW, 3)
 
-    ctx.fillStyle = COLOR.muted
-    ctx.font = `500 16px sans-serif`
+    ctx.fillStyle = theme.palette.muted
+    ctx.font = `500 13px ${theme.fonts.body}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
-    ctx.fillText(it.label, x + cellW / 2, y + 14)
+    ctx.fillText(it.label, x + cellW / 2, cy + 12)
 
-    ctx.fillStyle = COLOR.ink
-    ctx.font = `700 32px monospace`
+    ctx.fillStyle = theme.palette.ink
+    ctx.font = `700 26px ${theme.fonts.mono}`
     ctx.textBaseline = 'middle'
-    ctx.fillText(String(it.v), x + cellW / 2, y + 50)
+    ctx.fillText(String(it.v), x + cellW / 2, cy + 40)
   })
+  return cy + cellH + LINE_GAP + 10
 }
 
-function drawSkills(ctx: CanvasRenderingContext2D, c: Character | null) {
-  if (!c) return
-  ctx.fillStyle = COLOR.muted
-  ctx.font = `600 18px sans-serif`
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('— 技能 —', 60, 1180)
+function measureSelfIntroDerived(_ctx: CanvasRenderingContext2D, y: number, _c: Character | null, _theme: PosterTheme): number {
+  return y + 30 + 68 + LINE_GAP + 10
+}
+
+function drawSelfIntroSkills(ctx: CanvasRenderingContext2D, y: number, c: Character | null, theme: PosterTheme): number {
+  if (!c || c.skills.length === 0) return y
+  drawSectionTitle(ctx, y, '技能', theme)
+  let cy = y + 30
 
   const skills = [...c.skills]
     .map((s) => ({ name: s.name, total: s.initial + s.growth + s.occupation + s.interest }))
@@ -305,202 +420,171 @@ function drawSkills(ctx: CanvasRenderingContext2D, c: Character | null) {
     .sort((a, b) => b.total - a.total)
     .slice(0, 14)
 
-  const startY = 1220
-  const rowH = 30
-  const colW = (1080 - 60 * 2 - 32) / 2
-  if (skills.length === 0) {
-    ctx.fillStyle = COLOR.muted
-    ctx.font = `400 16px sans-serif`
-    ctx.textAlign = 'left'
-    ctx.fillText('（未填写技能）', 60, startY + 8)
-    return
-  }
-
+  const rowH = 28
+  const colW = (CONTENT_W - 32) / 2
   skills.forEach((s, i) => {
     const col = i % 2
     const row = Math.floor(i / 2)
-    const x = 60 + col * (colW + 32)
-    const y = startY + row * rowH
+    const x = MARGIN + col * (colW + 32)
+    const yy = cy + row * rowH
 
-    ctx.fillStyle = COLOR.ink
-    ctx.font = `500 18px sans-serif`
+    ctx.fillStyle = theme.palette.ink
+    ctx.font = `500 16px ${theme.fonts.body}`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    ctx.fillText(truncate(s.name, 12), x, y)
+    ctx.fillText(truncate(s.name, 12), x, yy)
 
-    ctx.fillStyle = COLOR.accent
-    ctx.font = `600 18px monospace`
+    ctx.fillStyle = theme.palette.accent
+    ctx.font = `600 16px ${theme.fonts.mono}`
     ctx.textAlign = 'right'
-    ctx.fillText(String(s.total), x + colW, y)
+    ctx.fillText(String(s.total), x + colW, yy)
 
-    ctx.strokeStyle = COLOR.line
+    ctx.strokeStyle = theme.palette.line
     ctx.lineWidth = 0.5
-    ctx.setLineDash([2, 4])
+    ctx.setLineDash([1, 3])
     ctx.beginPath()
-    ctx.moveTo(x, y + 12)
-    ctx.lineTo(x + colW, y + 12)
+    ctx.moveTo(x, yy + 10)
+    ctx.lineTo(x + colW, yy + 10)
     ctx.stroke()
     ctx.setLineDash([])
   })
+
+  return cy + Math.ceil(skills.length / 2) * rowH + LINE_GAP + 10
 }
 
-function drawSelfIntroBackground_(ctx: CanvasRenderingContext2D, bg: string) {
+function measureSelfIntroSkills(_ctx: CanvasRenderingContext2D, y: number, c: Character | null, _theme: PosterTheme): number {
+  if (!c || c.skills.length === 0) return y
+  const count = Math.min(c.skills.filter((s) => (s.initial + s.growth + s.occupation + s.interest) > 0).length, 14)
+  return y + 30 + Math.ceil(count / 2) * 28 + LINE_GAP + 10
+}
+
+function drawSelfIntroBackground(ctx: CanvasRenderingContext2D, y: number, bg: string, theme: PosterTheme): number {
   const text = bg.trim()
-  if (!text) return
-  ctx.fillStyle = COLOR.muted
-  ctx.font = `600 18px sans-serif`
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('— 背景 —', 60, 1380)
+  if (!text) return y
+  drawSectionTitle(ctx, y, '背景', theme)
+  let cy = y + 30
 
-  ctx.fillStyle = COLOR.ink
-  ctx.font = `400 18px sans-serif`
-  ctx.fillText(truncate(text, 56), 60, 1410)
-}
-
-// ============================ 招募模板绘制 ============================
-
-function drawRecruitBackground(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  const g = ctx.createLinearGradient(0, 0, 0, height)
-  g.addColorStop(0, COLOR.bgTop)
-  g.addColorStop(1, COLOR.bgBot)
-  ctx.fillStyle = g
-  ctx.fillRect(0, 0, width, height)
-
-  // 顶部 accent 装饰条
-  ctx.fillStyle = COLOR.accent
-  ctx.fillRect(0, 0, width, 8)
-  // 右上角装饰三角
-  ctx.fillStyle = COLOR.accentSoft
-  ctx.beginPath()
-  ctx.moveTo(width, 0)
-  ctx.lineTo(width - 180, 0)
-  ctx.lineTo(width, 180)
-  ctx.closePath()
-  ctx.fill()
-}
-
-function drawRecruitHeader(ctx: CanvasRenderingContext2D, width: number, status: string, moduleType: string) {
-  // 顶部装饰线
-  ctx.strokeStyle = COLOR.line
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(60, 70)
-  ctx.lineTo(width - 60, 70)
-  ctx.stroke()
-
-  // 顶部 RECRUITING 标签
-  ctx.fillStyle = COLOR.accent
-  ctx.font = `700 28px serif`
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('RECRUITING · 模组招募', 60, 110)
-
-  // 右上：状态 tag
-  if (status) {
-    const tagText = status
-    ctx.font = `600 18px sans-serif`
-    const tagW = ctx.measureText(tagText).width + 32
-    const tagX = width - 60 - tagW
-    const tagY = 90
-    const tagH = 36
-    ctx.fillStyle = COLOR.accent
-    ctx.fillRect(tagX, tagY, tagW, tagH)
-    ctx.fillStyle = '#ffffff'
-    ctx.textAlign = 'center'
-    ctx.fillText(tagText, tagX + tagW / 2, tagY + tagH / 2 + 1)
-  }
-
-  // 类型 tag（左侧偏小）
-  if (moduleType) {
-    const tagText = truncate(moduleType, 18)
-    ctx.font = `500 16px sans-serif`
-    const tagW = ctx.measureText(tagText).width + 24
-    const tagX = 60
-    const tagY = 155
-    const tagH = 30
-    ctx.fillStyle = COLOR.warmSoft
-    ctx.fillRect(tagX, tagY, tagW, tagH)
-    ctx.strokeStyle = COLOR.warm
-    ctx.lineWidth = 1
-    ctx.strokeRect(tagX, tagY, tagW, tagH)
-    ctx.fillStyle = COLOR.warm
-    ctx.textAlign = 'center'
-    ctx.fillText(tagText, tagX + tagW / 2, tagY + tagH / 2 + 1)
-  }
-}
-
-function drawRecruitModuleName(ctx: CanvasRenderingContext2D, width: number) {
-  const y = 220
-  ctx.fillStyle = COLOR.muted
-  ctx.font = `500 16px sans-serif`
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('— 模组简介 —', 60, y)
-
-  ctx.strokeStyle = COLOR.accent
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.moveTo(60, y + 14)
-  ctx.lineTo(width - 60, y + 14)
-  ctx.stroke()
-}
-
-function drawRecruitSummary(ctx: CanvasRenderingContext2D, text: string) {
-  if (!text.trim()) return
-  const y = 260
-  const padX = 24
-  const padY = 22
-  const boxW = 1080 - 60 * 2
-  const lineH = 28
-  const lines = wrapText(ctx, text.trim(), boxW - padX * 2, `400 20px serif`)
-  const boxH = padY * 2 + lineH * Math.min(lines.length, 6)
-  const drawLines = lines.slice(0, 6)
-
-  ctx.fillStyle = 'rgba(255,255,255,0.6)'
-  ctx.fillRect(60, y, boxW, boxH)
-  ctx.fillStyle = COLOR.accent
-  ctx.fillRect(60, y, 6, boxH)
-
-  ctx.fillStyle = COLOR.ink
-  ctx.font = `400 20px serif`
+  ctx.fillStyle = theme.palette.ink
+  ctx.font = `400 18px ${theme.fonts.body}`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
-  drawLines.forEach((line, i) => {
-    ctx.fillText(line, 60 + padX, y + padY + i * lineH)
+  const lines = wrapText(ctx, text, CONTENT_W, `400 18px ${theme.fonts.body}`)
+  const lineH = 26
+  lines.forEach((line, i) => {
+    ctx.fillText(line, MARGIN, cy + i * lineH)
   })
+  return cy + lineH * lines.length + LINE_GAP + 10
 }
 
-function drawRecruitSelfIntro(ctx: CanvasRenderingContext2D, text: string) {
-  if (!text.trim()) return
-  const y = 470
-  const padX = 22
-  const padY = 14
-  const boxW = 1080 - 60 * 2
-  const lineH = 24
-  const lines = wrapText(ctx, text.trim(), boxW - padX * 2, `italic 400 16px serif`).slice(0, 2)
-  const boxH = padY * 2 + 18 + lineH * lines.length
+function measureSelfIntroBackground(ctx: CanvasRenderingContext2D, y: number, bg: string, theme: PosterTheme): number {
+  const text = bg.trim()
+  if (!text) return y
+  ctx.font = `400 18px ${theme.fonts.body}`
+  const lines = wrapText(ctx, text, CONTENT_W, `400 18px ${theme.fonts.body}`)
+  return y + 30 + 26 * lines.length + LINE_GAP + 10
+}
 
-  ctx.fillStyle = 'rgba(255,255,255,0.5)'
-  ctx.fillRect(60, y, boxW, boxH)
-  ctx.strokeStyle = COLOR.warm
+// ====================== 招募模板 ======================
+
+function drawRecruitHeader(ctx: CanvasRenderingContext2D, y: number, values: Record<string, string>, theme: PosterTheme): number {
+  const moduleType = values.moduleType ?? ''
+  const status = values.status ?? ''
+
+  // 大字标题
+  ctx.fillStyle = theme.palette.ink
+  ctx.font = `italic 700 64px ${theme.fonts.heading}`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.fillText('模组招募', MARGIN + CONTENT_W / 2, y)
+  let cy = y + 90
+
+  // 副标题：类型 + 状态
+  const meta: string[] = []
+  if (moduleType) meta.push(moduleType)
+  if (status) meta.push(status)
+  if (meta.length > 0) {
+    ctx.fillStyle = theme.palette.muted
+    ctx.font = `400 20px ${theme.fonts.body}`
+    ctx.fillText(meta.join('  ·  '), MARGIN + CONTENT_W / 2, cy)
+    cy += 30
+  }
+  cy += 30
+  drawSectionDivider(ctx, cy, theme)
+  return cy + 30
+}
+
+function measureRecruitHeader(_ctx: CanvasRenderingContext2D, y: number, values: Record<string, string>, _theme: PosterTheme): number {
+  let cy = y + 90
+  if (values.moduleType || values.status) cy += 30
+  cy += 30 + 30
+  return cy
+}
+
+function drawRecruitSummary(ctx: CanvasRenderingContext2D, y: number, text: string, theme: PosterTheme): number {
+  if (!text.trim()) return y
+  drawSectionTitle(ctx, y, '模组简介', theme)
+  let cy = y + 30
+
+  ctx.font = `400 20px ${theme.fonts.body}`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  const lines = wrapText(ctx, text.trim(), CONTENT_W - 40, `400 20px ${theme.fonts.body}`)
+  const lineH = 30
+  const pad = 18
+  const boxH = pad * 2 + lineH * lines.length
+
+  ctx.fillStyle = theme.palette.card
+  ctx.fillRect(MARGIN, cy, CONTENT_W, boxH)
+  ctx.fillStyle = theme.palette.accent
+  ctx.fillRect(MARGIN, cy, 4, boxH)
+
+  ctx.fillStyle = theme.palette.ink
+  lines.forEach((line, i) => {
+    ctx.fillText(line, MARGIN + 18, cy + pad + i * lineH)
+  })
+  return cy + boxH + LINE_GAP + 10
+}
+
+function measureRecruitSummary(ctx: CanvasRenderingContext2D, y: number, text: string, theme: PosterTheme): number {
+  if (!text.trim()) return y
+  ctx.font = `400 20px ${theme.fonts.body}`
+  const lines = wrapText(ctx, text.trim(), CONTENT_W - 40, `400 20px ${theme.fonts.body}`)
+  return y + 30 + 36 + 30 * lines.length + LINE_GAP + 10
+}
+
+function drawRecruitSelfIntro(ctx: CanvasRenderingContext2D, y: number, text: string, theme: PosterTheme): number {
+  if (!text.trim()) return y
+  drawSectionTitle(ctx, y, 'KP 自我介绍', theme)
+  let cy = y + 30
+
+  ctx.font = `italic 400 18px ${theme.fonts.body}`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  const lines = wrapText(ctx, text.trim(), CONTENT_W - 40, `italic 400 18px ${theme.fonts.body}`)
+  const lineH = 26
+  const pad = 16
+  const boxH = pad * 2 + lineH * lines.length
+
+  ctx.fillStyle = 'rgba(255,255,255,0.4)'
+  ctx.fillRect(MARGIN, cy, CONTENT_W, boxH)
+  ctx.strokeStyle = theme.palette.warm
   ctx.lineWidth = 1
   ctx.setLineDash([3, 3])
-  ctx.strokeRect(60, y, boxW, boxH)
+  ctx.strokeRect(MARGIN, cy, CONTENT_W, boxH)
   ctx.setLineDash([])
 
-  ctx.fillStyle = COLOR.warm
-  ctx.font = `600 13px sans-serif`
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'top'
-  ctx.fillText('— KP 自我介绍 —', 60 + padX, y + padY - 4)
-
-  ctx.fillStyle = COLOR.ink
-  ctx.font = `italic 400 16px serif`
-  ctx.textBaseline = 'top'
+  ctx.fillStyle = theme.palette.ink
   lines.forEach((line, i) => {
-    ctx.fillText(line, 60 + padX, y + padY + 16 + i * lineH)
+    ctx.fillText(line, MARGIN + 18, cy + pad + i * lineH)
   })
+  return cy + boxH + LINE_GAP + 10
+}
+
+function measureRecruitSelfIntro(ctx: CanvasRenderingContext2D, y: number, text: string, theme: PosterTheme): number {
+  if (!text.trim()) return y
+  ctx.font = `italic 400 18px ${theme.fonts.body}`
+  const lines = wrapText(ctx, text.trim(), CONTENT_W - 40, `italic 400 18px ${theme.fonts.body}`)
+  return y + 30 + 32 + 26 * lines.length + LINE_GAP + 10
 }
 
 interface RecruitInfoItem {
@@ -508,123 +592,106 @@ interface RecruitInfoItem {
   value: string
 }
 
-function drawRecruitInfoList(ctx: CanvasRenderingContext2D, items: RecruitInfoItem[]) {
-  const startY = 580
-  const rowH = 56
-  const boxW = 1080 - 60 * 2
-  const labelW = 150
+function drawRecruitInfoList(ctx: CanvasRenderingContext2D, y: number, items: RecruitInfoItem[], theme: PosterTheme): number {
+  const visible = items.filter((it) => it.value.trim())
+  if (visible.length === 0) return y
+  drawSectionTitle(ctx, y, '关键信息', theme)
+  let cy = y + 30
 
-  const visibleItems = items.filter((it) => it.value.trim())
-
-  if (visibleItems.length === 0) return
-
-  ctx.fillStyle = COLOR.muted
-  ctx.font = `600 18px sans-serif`
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('— 关键信息 —', 60, startY - 30)
-
-  visibleItems.forEach((item, i) => {
-    const y = startY + i * (rowH + 6)
-    ctx.fillStyle = COLOR.accentSoft
-    ctx.fillRect(60, y, boxW, rowH)
-    ctx.fillStyle = COLOR.accent
-    ctx.fillRect(60, y, labelW, rowH)
+  const labelW = 130
+  const rowH = 52
+  visible.forEach((item, i) => {
+    const yy = cy + i * (rowH + 6)
+    ctx.fillStyle = theme.palette.accentSoft
+    ctx.fillRect(MARGIN, yy, CONTENT_W, rowH)
+    ctx.fillStyle = theme.palette.accent
+    ctx.fillRect(MARGIN, yy, labelW, rowH)
 
     ctx.fillStyle = '#ffffff'
-    ctx.font = `600 14px sans-serif`
+    ctx.font = `600 14px ${theme.fonts.body}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(item.label, 60 + labelW / 2, y + rowH / 2 + 1)
+    ctx.fillText(item.label, MARGIN + labelW / 2, yy + rowH / 2 + 1)
 
-    ctx.fillStyle = COLOR.ink
-    ctx.font = `400 16px sans-serif`
+    ctx.fillStyle = theme.palette.ink
+    ctx.font = `400 16px ${theme.fonts.body}`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    const valueText = item.value.trim()
-    const valLines = wrapText(ctx, valueText, boxW - labelW - 32, `400 16px sans-serif`).slice(0, 2)
+    const valLines = wrapText(ctx, item.value.trim(), CONTENT_W - labelW - 32, `400 16px ${theme.fonts.body}`).slice(0, 2)
     valLines.forEach((line, li) => {
-      ctx.fillText(line, 60 + labelW + 16, y + rowH / 2 + (li - (valLines.length - 1) / 2) * 20)
+      ctx.fillText(line, MARGIN + labelW + 16, yy + rowH / 2 + (li - (valLines.length - 1) / 2) * 20)
     })
   })
+  return cy + visible.length * (rowH + 6) + LINE_GAP + 10
 }
 
-function drawRecruitContact(ctx: CanvasRenderingContext2D, text: string) {
-  if (!text.trim()) return
-  const y = 1010
-  const padX = 24
-  const padY = 18
-  const boxW = 1080 - 60 * 2
-  const lineH = 26
-  const lines = wrapText(ctx, text.trim(), boxW - padX * 2 - 80, `500 20px sans-serif`)
+function measureRecruitInfoList(_ctx: CanvasRenderingContext2D, y: number, items: RecruitInfoItem[], _theme: PosterTheme): number {
+  const visible = items.filter((it) => it.value.trim())
+  if (visible.length === 0) return y
+  return y + 30 + visible.length * (52 + 6) + LINE_GAP + 10
+}
 
-  ctx.fillStyle = COLOR.warmSoft
-  ctx.fillRect(60, y, boxW, Math.max(50, padY * 2 + lineH * lines.length))
-  ctx.fillStyle = COLOR.warm
-  ctx.fillRect(60, y, 6, Math.max(50, padY * 2 + lineH * lines.length))
-
-  ctx.fillStyle = COLOR.warm
-  ctx.font = `700 16px sans-serif`
+function drawRecruitContact(ctx: CanvasRenderingContext2D, y: number, text: string, theme: PosterTheme): number {
+  if (!text.trim()) return y
+  ctx.font = `500 18px ${theme.fonts.body}`
   ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('联系方式', 80, y + 26)
-
-  ctx.fillStyle = COLOR.ink
-  ctx.font = `500 20px sans-serif`
-  ctx.textBaseline = 'middle'
-  lines.slice(0, 2).forEach((line, i) => {
-    ctx.fillText(line, 220, y + 26 + i * lineH)
-  })
-}
-
-function drawRecruitNotes(ctx: CanvasRenderingContext2D, text: string) {
-  if (!text.trim()) return
-  const y = 1140
-  const padX = 20
-  const padY = 18
-  const boxW = 1080 - 60 * 2
+  ctx.textBaseline = 'top'
+  const lines = wrapText(ctx, text.trim(), CONTENT_W - 200, `500 18px ${theme.fonts.body}`)
   const lineH = 24
-  const lines = wrapText(ctx, text.trim(), boxW - padX * 2, `italic 400 18px serif`).slice(0, 5)
-  const boxH = padY * 2 + lineH * lines.length
+  const pad = 18
+  const boxH = pad * 2 + lineH * lines.length
 
-  ctx.fillStyle = 'rgba(255,255,255,0.5)'
-  ctx.fillRect(60, y, boxW, boxH)
-  ctx.strokeStyle = COLOR.line
-  ctx.lineWidth = 1
-  ctx.strokeRect(60, y, boxW, boxH)
+  ctx.fillStyle = theme.palette.warmSoft
+  ctx.fillRect(MARGIN, y, CONTENT_W, boxH)
+  ctx.fillStyle = theme.palette.warm
+  ctx.fillRect(MARGIN, y, 4, boxH)
 
-  ctx.fillStyle = COLOR.muted
-  ctx.font = `600 14px sans-serif`
+  ctx.fillStyle = theme.palette.warm
+  ctx.font = `700 14px ${theme.fonts.body}`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('联系方式', MARGIN + 16, y + pad + 12)
+
+  ctx.fillStyle = theme.palette.ink
+  ctx.font = `500 18px ${theme.fonts.body}`
+  lines.slice(0, 2).forEach((line, i) => {
+    ctx.fillText(line, MARGIN + 130, y + pad + 12 + i * lineH)
+  })
+  return y + boxH + LINE_GAP + 10
+}
+
+function measureRecruitContact(ctx: CanvasRenderingContext2D, y: number, text: string, theme: PosterTheme): number {
+  if (!text.trim()) return y
+  ctx.font = `500 18px ${theme.fonts.body}`
+  const lines = wrapText(ctx, text.trim(), CONTENT_W - 200, `500 18px ${theme.fonts.body}`)
+  return y + 36 + 24 * lines.length + LINE_GAP + 10
+}
+
+function drawRecruitNotes(ctx: CanvasRenderingContext2D, y: number, text: string, theme: PosterTheme): number {
+  if (!text.trim()) return y
+  drawSectionTitle(ctx, y, '备注', theme)
+  let cy = y + 30
+
+  ctx.fillStyle = theme.palette.ink
+  ctx.font = `italic 400 17px ${theme.fonts.body}`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
-  ctx.fillText('备注', 60 + padX, y + padY - 4)
-
-  ctx.fillStyle = COLOR.ink
-  ctx.font = `italic 400 18px serif`
-  ctx.textBaseline = 'top'
+  const lines = wrapText(ctx, text.trim(), CONTENT_W, `italic 400 17px ${theme.fonts.body}`)
+  const lineH = 24
   lines.forEach((line, i) => {
-    ctx.fillText(line, 60 + padX, y + padY + 20 + i * lineH)
+    ctx.fillText(line, MARGIN, cy + i * lineH)
   })
+  return cy + lineH * lines.length + LINE_GAP + 10
 }
 
-// ============================ 共用绘制 ============================
-
-function drawFooter(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  ctx.strokeStyle = COLOR.line
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(60, height - 50)
-  ctx.lineTo(width - 60, height - 50)
-  ctx.stroke()
-
-  ctx.fillStyle = COLOR.muted
-  ctx.font = `400 14px sans-serif`
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('Made with TRPG Helper · 本地生成 · 数据不上传', width / 2, height - 28)
+function measureRecruitNotes(ctx: CanvasRenderingContext2D, y: number, text: string, theme: PosterTheme): number {
+  if (!text.trim()) return y
+  ctx.font = `italic 400 17px ${theme.fonts.body}`
+  const lines = wrapText(ctx, text.trim(), CONTENT_W, `italic 400 17px ${theme.fonts.body}`)
+  return y + 30 + 24 * lines.length + LINE_GAP + 10
 }
 
-// ============================ 文本辅助 ============================
+// ====================== 辅助 ======================
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s
