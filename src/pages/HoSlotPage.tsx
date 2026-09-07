@@ -383,15 +383,15 @@ function EntryCard({ entry, isOrphan, laneColor, onCycleStatus, onUpdate, onRemo
   return (
     <div
       className={cn(
-        'group rounded-md border p-2.5 text-xs transition-colors',
+        'group rounded-md border-2 p-2.5 text-xs transition-colors bg-surface',
         isOrphan
-          ? 'border-warning/40 bg-highlight-soft'
-          : 'hover:opacity-95',
+          ? 'border-warning/60'
+          : 'hover:border-accent/60',
       )}
       style={
         isOrphan
           ? undefined
-          : { backgroundColor: laneColor.bg, borderColor: `${laneColor.fg}30` }
+          : { borderColor: laneColor.bg }
       }
     >
       <div className="mb-1.5 flex items-center justify-between gap-1">
@@ -404,7 +404,7 @@ function EntryCard({ entry, isOrphan, laneColor, onCycleStatus, onUpdate, onRemo
           <Badge
             variant="outline"
             className={cn(
-              'rounded-full border-transparent px-2 py-0 text-[10px] font-medium tracking-wide',
+              'rounded-full border-transparent px-2 py-0 text-[10px] font-sans font-medium tracking-wide',
               // 全部走柔和色（low-saturation pastel）
               entry.status === 'ongoing' && 'bg-accent-soft text-accent',
               entry.status === 'satellite' && 'bg-blue-50 text-blue-600',
