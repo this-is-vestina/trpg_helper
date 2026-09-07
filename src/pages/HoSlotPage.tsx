@@ -24,7 +24,12 @@ export function HoSlotPage() {
   const removeEntry = useHoSlotStore((s) => s.removeEntry)
 
   // 用 characterStore 拿当前所有角色，标记 entry 是否孤儿
-  const characterIds = useCharacterStore((s) => new Set(s.characters.map((c) => c.id)))
+  // 注意：selector 必须返回稳定引用；new Set(...) 会每次新建，导致无限重渲染
+  const characters = useCharacterStore((s) => s.characters)
+  const characterIds = useMemo(
+    () => new Set(characters.map((c) => c.id)),
+    [characters],
+  )
   const loadCharacters = useCharacterStore((s) => s.loadAll)
 
   useEffect(() => {
