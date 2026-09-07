@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Save, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useCharacterStore } from '@/features/character'
+import { useCharacterStore, createBlankCharacter } from '@/features/character'
 import type { Character, CharacterInfo, CharacterStats } from '@/features/character'
 import { coc7DerivedCalc } from '@/features/character/derivedCalc'
 import { BasicInfoSection } from '@/features/character/components/BasicInfoSection'
@@ -11,11 +11,14 @@ import { SkillsSection } from '@/features/character/components/SkillsSection'
 import { NotesSection } from '@/features/character/components/NotesSection'
 
 /**
- * 角色卡编辑（Phase 2-B 完整版）
- * - /characters/new：新建（无 id，状态为空）
- * - /characters/:id：编辑（从 store 读取）
- * - 顶部：返回 + 标题 + 保存/删除按钮
- * - 内容：4 个 sections（基础信息 / 属性 / 技能 / 标签与文本）
+ * 角色卡编辑（Phase 2-B 完整版 + bug fix）
+ *
+ * 关键修复：新建模式 form 用 createBlankCharacter() 立即初始化
+ * 旧版：form 是 null，所有 onChange 是 no-op，用户输入被吞
+ *
+ * - /characters/new：form 立即为空白草稿，可直接输入
+ * - /characters/:id：form 从 store clone，编辑不污染 store
+ * - loadedIdRef：避免编辑模式 effect 在用户输入后被 store 引用变化"覆盖"草稿
  */
 export function CharacterEdit() {
   const { id } = useParams<{ id?: string }>()
@@ -25,35 +28,33 @@ export function CharacterEdit() {
   const loadAll = useCharacterStore((s) => s.loadAll)
   const storeCharacters = useCharacterStore((s) => s.characters)
   const isLoading = useCharacterStore((s) => s.isLoading)
-  const createAction = useCharacterStore((s) => s.create)
   const updateAction = useCharacterStore((s) => s.update)
   const removeAction = useCharacterStore((s) => s.remove)
 
-  // 本地表单状态（编辑时存的是现有 character 副本，新建时为空）
-  const [form, setForm] = useState<Character | null>(null)
+  const [form, setForm] = useState<Character | null>(() =>
+    isNew ? createBlankCharacter() : null,
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const loadedIdRef = useRef<string | null>(null)
 
   // 首次进入：保证 store 有数据
   useEffect(() => {
-    if (storeCharacters.length === 0) {
+    if (storeCharacters.length === 0 && !isLoading) {
       loadAll()
     }
-  }, [storeCharacters.length, loadAll])
+  }, [storeCharacters.length, isLoading, loadAll])
 
-  // 根据 id 从 store 取（或等待加载）
+  // 编辑模式：从 store 加载当前 id 到本地 form（只加载一次）
   useEffect(() => {
-    if (isNew) {
-      // 新建模式：给一个空白卡草稿
-      setForm(null) // 显式 null，下方按"草稿"模式渲染
-      return
-    }
+    if (isNew) return
     if (isLoading) return
+    if (loadedIdRef.current === id) return
     const c = storeCharacters.find((x) => x.id === id)
     if (c) {
       setForm(structuredClone(c))
+      loadedIdRef.current = id ?? null
     } else if (storeCharacters.length > 0) {
-      // 列表已加载但找不到 id → 跳回列表
       setError('找不到该角色卡')
       navigate('/characters', { replace: true })
     }
@@ -70,7 +71,6 @@ export function CharacterEdit() {
           ? {
               ...f,
               stats,
-              // 衍生属性随 stats 实时重算
               derived: coc7DerivedCalc.compute(stats, { age: f.info.age }),
             }
           : f,
@@ -105,43 +105,26 @@ export function CharacterEdit() {
   async function handleSave() {
     if (saving) return
     setError(null)
+    if (!form) return
 
-    if (isNew) {
-      if (!form) {
-        // 第一次点保存：先 create
-        setSaving(true)
-        try {
-          const c = await createAction()
-          navigate(`/characters/${c.id}`, { replace: true })
-        } catch (e) {
-          setError(e instanceof Error ? e.message : String(e))
-        } finally {
-          setSaving(false)
-        }
-        return
-      }
-      // 已有草稿（user 改过字段）→ 用 create 落库后跳转到新 id
-      setSaving(true)
-      try {
-        const c = await createAction()
-        await updateAction(c.id, form)
-        navigate(`/characters/${c.id}`, { replace: true })
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
-      } finally {
-        setSaving(false)
-      }
-    } else {
-      if (!form) return
-      setSaving(true)
-      try {
+    setSaving(true)
+    try {
+      if (isNew) {
+        // 新建模式：草稿已有 id（createBlankCharacter 生成），直接 upsert
+        await updateAction(form.id, {
+          ...form,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        navigate(`/characters/${form.id}`, { replace: true })
+      } else {
         await updateAction(form.id, form)
         navigate('/characters')
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
-      } finally {
-        setSaving(false)
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -160,47 +143,11 @@ export function CharacterEdit() {
 
   // ---- 渲染 ----
 
-  if (isLoading && !form && !isNew) {
-    return <div className="text-sm text-muted">加载中…</div>
+  if (!isNew && !form) {
+    if (isLoading) return <div className="text-sm text-muted">加载中…</div>
+    return <div className="text-sm text-muted">准备中…</div>
   }
-
-  // 编辑 / 草稿模式都共用 form 的 4 个 sections
-  // 新建时 form 为 null，给一个全空默认
-  const view: Character =
-    form ?? {
-      id: 'draft',
-      info: {
-        name: '',
-        player: '',
-        occupation: '',
-        occupationNo: 0,
-        age: 25,
-        gender: '',
-        residence: '',
-        birthplace: '',
-        era: '现代',
-      },
-      stats: {
-        str: 50,
-        dex: 50,
-        pow: 50,
-        con: 50,
-        app: 50,
-        edu: 50,
-        siz: 50,
-        int: 50,
-        luck: 50,
-      },
-      derived: { hp: 10, san: 50, mp: 10, mov: 8, build: 0, db: '0' },
-      skills: [],
-      background: '',
-      inventory: '',
-      companions: '',
-      notes: '',
-      tags: [],
-      createdAt: 0,
-      updatedAt: 0,
-    }
+  if (!form) return null
 
   return (
     <div className="flex flex-col gap-6 pb-12">
@@ -213,7 +160,7 @@ export function CharacterEdit() {
           </Button>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              {isNew ? '新建角色卡' : form?.info.name || '未命名角色卡'}
+              {isNew ? '新建角色卡' : form.info.name || '未命名角色卡'}
             </h1>
             <p className="mt-1 text-sm text-muted">
               {isNew
@@ -223,7 +170,7 @@ export function CharacterEdit() {
           </div>
         </div>
         <div className="flex gap-2">
-          {!isNew && form && (
+          {!isNew && (
             <Button type="button" variant="outline" onClick={handleDelete} disabled={saving}>
               <Trash2 />
               删除
@@ -243,15 +190,15 @@ export function CharacterEdit() {
       )}
 
       <div className="flex flex-col gap-6">
-        <BasicInfoSection info={view.info} onChange={onInfoChange} />
-        <StatsSection stats={view.stats} age={view.info.age} onStatsChange={onStatsChange} />
-        <SkillsSection skills={view.skills} onChange={onSkillsChange} />
+        <BasicInfoSection info={form.info} onChange={onInfoChange} />
+        <StatsSection stats={form.stats} age={form.info.age} onStatsChange={onStatsChange} />
+        <SkillsSection skills={form.skills} onChange={onSkillsChange} />
         <NotesSection
-          tags={view.tags}
-          background={view.background}
-          inventory={view.inventory}
-          companions={view.companions}
-          notes={view.notes}
+          tags={form.tags}
+          background={form.background}
+          inventory={form.inventory}
+          companions={form.companions}
+          notes={form.notes}
           onTagsChange={onTagsChange}
           onBackgroundChange={onBackgroundChange}
           onInventoryChange={onInventoryChange}
