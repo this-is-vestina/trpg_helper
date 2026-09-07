@@ -1,20 +1,22 @@
 /**
  * IndexedDB 初始化（基于 idb 库）
  * - db 名：trpg-helper
- * - store：characters / ho-slots
+ * - store：characters / ho-slots / ho-slot-lanes
  * - 升级路径：
  *   v1：建 characters store
  *   v2：建 ho-slots store（Phase 2-B.2.b）
- *   后续 v3+ 在 upgrade 回调里继续分支
+ *   v3：建 ho-slot-lanes store（lane 自定义 label）
+ *   后续 v4+ 在 upgrade 回调里继续分支
  */
 
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Character } from './types'
 
 const DB_NAME = 'trpg-helper'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const STORE_CHARACTERS = 'characters'
 const STORE_HO_SLOTS = 'ho-slots'
+const STORE_HO_SLOT_LANES = 'ho-slot-lanes'
 
 interface TrpgHelperDb extends DBSchema {
   characters: {
@@ -26,6 +28,10 @@ interface TrpgHelperDb extends DBSchema {
     key: string
     value: import('@/features/hoSlot').HoSlotEntry
     indexes: { 'by-characterId': string; 'by-hoSlot': number }
+  }
+  'ho-slot-lanes': {
+    key: number
+    value: import('@/features/hoSlot').HoSlotLane
   }
 }
 
@@ -44,6 +50,9 @@ export function getDb(): Promise<IDBPDatabase<TrpgHelperDb>> {
           hoStore.createIndex('by-characterId', 'characterId', { unique: true })
           hoStore.createIndex('by-hoSlot', 'hoSlot')
         }
+        if (oldVersion < 3) {
+          db.createObjectStore(STORE_HO_SLOT_LANES, { keyPath: 'key' })
+        }
       },
       blocked() {
         console.warn('[trpg-helper] IndexedDB blocked by another tab')
@@ -60,4 +69,4 @@ export function getDb(): Promise<IDBPDatabase<TrpgHelperDb>> {
   return dbPromise
 }
 
-export { STORE_CHARACTERS, STORE_HO_SLOTS }
+export { STORE_CHARACTERS, STORE_HO_SLOTS, STORE_HO_SLOT_LANES }

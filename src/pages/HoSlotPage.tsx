@@ -1,52 +1,76 @@
 /**
- * Ho 位管理页面（看板风格）
- * - 横向 5 个 lane：Ho 1 / Ho 2 / Ho 3 / Ho 4 / 无 Ho
- * - 每个 lane 下挂 entry 卡片（按 hoSlot 分组）
- * - 单向同步：character 卡改动 → 自动更新 entry；hoSlot 内部改动不反向影响 character
- * - 删除角色卡：entry 保留，UI 显示警告
+ * Ho 位管理页面（看板风格 + 可编辑）
+ *
+ * - lane 自定义：可重命名 label / 新增 / 删除（删除时 entries 归到「无 Ho」）
+ * - entry 操作：手动添加（无 characterId）/ 状态 tag 点击循环切换
+ * - 单向同步：character → entry（character 删除保留 entry 为孤儿，UI 警告）
+ * - entry 可点开 inline 编辑 name / module / note（简化版）
  */
 
-import { useEffect, useMemo } from 'react'
-import { Trash2, ExternalLink, AlertTriangle } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  Trash2,
+  ExternalLink,
+  AlertTriangle,
+  Plus,
+  Pencil,
+  Check,
+  X,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Link } from 'react-router-dom'
-import { useHoSlotStore, HO_SLOT_LANES, HO_SLOT_NONE_LANE, laneLabel } from '@/features/hoSlot'
+import {
+  useHoSlotStore,
+  HO_SLOT_MAX_KEY,
+  HO_SLOT_NONE_LANE,
+  type HoSlotEntry,
+  type HoSlotLane,
+} from '@/features/hoSlot'
 import { useCharacterStore } from '@/features/character'
 import { MODULE_STATUS_LABELS, type ModuleStatus } from '@/features/character/types'
 import { cn } from '@/lib/utils'
-import type { HoSlotEntry } from '@/features/hoSlot'
 
 export function HoSlotPage() {
+  const lanes = useHoSlotStore((s) => s.lanes)
   const entries = useHoSlotStore((s) => s.entries)
   const isLoading = useHoSlotStore((s) => s.isLoading)
-  const loadAll = useHoSlotStore((s) => s.loadAll)
+  const loadEntries = useHoSlotStore((s) => s.loadAll)
+  const loadLanes = useHoSlotStore((s) => s.loadLanes)
+  const addLane = useHoSlotStore((s) => s.addLane)
+  const renameLane = useHoSlotStore((s) => s.renameLane)
+  const removeLane = useHoSlotStore((s) => s.removeLane)
+  const addManualEntry = useHoSlotStore((s) => s.addManualEntry)
+  const cycleStatus = useHoSlotStore((s) => s.cycleStatus)
+  const updateEntry = useHoSlotStore((s) => s.updateEntry)
   const removeEntry = useHoSlotStore((s) => s.removeEntry)
 
-  // 用 characterStore 拿当前所有角色，标记 entry 是否孤儿
-  // 注意：selector 必须返回稳定引用；new Set(...) 会每次新建，导致无限重渲染
   const characters = useCharacterStore((s) => s.characters)
+  const loadCharacters = useCharacterStore((s) => s.loadAll)
+
+  // 稳定 Set（修复 zustand selector 无限重渲染 bug）
   const characterIds = useMemo(
     () => new Set(characters.map((c) => c.id)),
     [characters],
   )
-  const loadCharacters = useCharacterStore((s) => s.loadAll)
 
   useEffect(() => {
     loadCharacters()
-    loadAll()
-  }, [loadCharacters, loadAll])
+    loadEntries()
+    loadLanes()
+  }, [loadCharacters, loadEntries, loadLanes])
 
   // 按 lane 分组
   const grouped = useMemo(() => {
     const g = new Map<number, HoSlotEntry[]>()
-    for (const l of HO_SLOT_LANES) g.set(l, [])
-    g.set(HO_SLOT_NONE_LANE, [])
+    for (const l of lanes) g.set(l.key, [])
     for (const e of entries) {
-      const lane = e.hoSlot >= 1 && e.hoSlot <= 4 ? e.hoSlot : HO_SLOT_NONE_LANE
-      g.get(lane)?.push(e)
+      const lane = lanes.find((l) => l.key === e.hoSlot)?.key ?? HO_SLOT_NONE_LANE
+      if (!g.has(lane)) g.set(lane, [])
+      g.get(lane)!.push(e)
     }
-    // 每组内按状态优先级排：进行中 > 卫星中 > 暂停中 > 已结团 > 已散桌
     const order: Record<ModuleStatus, number> = {
       ongoing: 0,
       satellite: 1,
@@ -58,35 +82,59 @@ export function HoSlotPage() {
       list.sort((a, b) => order[a.status] - order[b.status] || a.createdAt - b.createdAt)
     }
     return g
-  }, [entries])
+  }, [lanes, entries])
 
-  const lanesToShow = [...HO_SLOT_LANES, HO_SLOT_NONE_LANE]
+  const canAddLane = lanes.length <= HO_SLOT_MAX_KEY
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-end justify-between">
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Ho 位管理</h1>
           <p className="mt-1 text-sm text-muted">
-            单向同步：角色卡改动会自动更新条目；删除角色卡不影响此处条目。
+            单向同步：角色卡改动自动更新条目；删除角色卡不影响条目。点击状态 tag 循环切换。
           </p>
         </div>
-        <div className="text-xs text-muted">
-          共 {entries.length} 个条目
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-muted">共 {entries.length} 个条目</div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => addLane()}
+            disabled={!canAddLane}
+            title={canAddLane ? '新增 Ho 位 lane' : `最多 ${HO_SLOT_MAX_KEY} 个 Ho 位`}
+          >
+            <Plus />
+            新增 Ho 位
+          </Button>
         </div>
       </header>
 
       {isLoading && entries.length === 0 ? (
         <p className="text-sm text-muted">加载中…</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
-          {lanesToShow.map((lane) => (
-            <Lane
-              key={lane}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {lanes.map((lane) => (
+            <LaneColumn
+              key={lane.key}
               lane={lane}
-              entries={grouped.get(lane) ?? []}
+              entries={grouped.get(lane.key) ?? []}
               characterIds={characterIds}
-              onRemove={removeEntry}
+              canDelete={lane.key !== HO_SLOT_NONE_LANE}
+              onRename={(label) => renameLane(lane.key, label)}
+              onDelete={() => {
+                const cnt = grouped.get(lane.key)?.length ?? 0
+                const msg =
+                  cnt === 0
+                    ? `确认删除「${lane.label}」？`
+                    : `确认删除「${lane.label}」？该 lane 下的 ${cnt} 个条目会自动归到「无 Ho」。`
+                if (confirm(msg)) removeLane(lane.key)
+              }}
+              onCycleStatus={cycleStatus}
+              onUpdateEntry={updateEntry}
+              onRemoveEntry={removeEntry}
+              onAddEntry={(input) => addManualEntry({ ...input, hoSlot: lane.key })}
             />
           ))}
         </div>
@@ -95,57 +143,169 @@ export function HoSlotPage() {
   )
 }
 
-function Lane({
+interface LaneColumnProps {
+  lane: HoSlotLane
+  entries: HoSlotEntry[]
+  characterIds: Set<string>
+  canDelete: boolean
+  onRename: (label: string) => void | Promise<void>
+  onDelete: () => void
+  onCycleStatus: (id: string) => void | Promise<void>
+  onUpdateEntry: (id: string, patch: Partial<HoSlotEntry>) => void | Promise<void>
+  onRemoveEntry: (id: string) => void | Promise<void>
+  onAddEntry: (input: { name: string; module: string; status?: ModuleStatus; note?: string }) => void | Promise<unknown>
+}
+
+function LaneColumn({
   lane,
   entries,
   characterIds,
-  onRemove,
-}: {
-  lane: number
-  entries: HoSlotEntry[]
-  characterIds: Set<string>
-  onRemove: (id: string) => void
-}) {
-  const isNone = lane === HO_SLOT_NONE_LANE
+  canDelete,
+  onRename,
+  onDelete,
+  onCycleStatus,
+  onUpdateEntry,
+  onRemoveEntry,
+  onAddEntry,
+}: LaneColumnProps) {
+  const isNone = lane.key === HO_SLOT_NONE_LANE
+  const [renaming, setRenaming] = useState(false)
+  const [labelDraft, setLabelDraft] = useState(lane.label)
+  const [adding, setAdding] = useState(false)
+
+  function commitRename() {
+    if (labelDraft.trim() && labelDraft !== lane.label) onRename(labelDraft)
+    setRenaming(false)
+  }
+
   return (
     <Card className={cn(isNone && 'border-dashed')}>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted">
-            {laneLabel(lane)}
-          </CardTitle>
-          <Badge variant="outline" className="font-mono">
-            {entries.length}
-          </Badge>
+        <div className="flex items-center justify-between gap-1">
+          {renaming ? (
+            <div className="flex flex-1 items-center gap-1">
+              <Input
+                autoFocus
+                value={labelDraft}
+                onChange={(e) => setLabelDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitRename()
+                  if (e.key === 'Escape') {
+                    setLabelDraft(lane.label)
+                    setRenaming(false)
+                  }
+                }}
+                className="h-7 px-2 text-xs"
+              />
+              <button
+                type="button"
+                onClick={commitRename}
+                className="text-accent hover:text-accent/80"
+                aria-label="确认重命名"
+              >
+                <Check className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLabelDraft(lane.label)
+                  setRenaming(false)
+                }}
+                className="text-muted hover:text-ink"
+                aria-label="取消"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          ) : (
+            <CardTitle
+              className="flex flex-1 cursor-pointer items-center gap-1 text-sm font-semibold uppercase tracking-wide text-muted hover:text-ink"
+              onClick={() => {
+                setLabelDraft(lane.label)
+                setRenaming(true)
+              }}
+              title="点击重命名"
+            >
+              <span>{lane.label}</span>
+              <Pencil className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+            </CardTitle>
+          )}
+          <div className="flex items-center gap-1">
+            <Badge variant="outline" className="font-mono">
+              {entries.length}
+            </Badge>
+            {canDelete && !renaming && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="text-muted opacity-60 transition-opacity hover:text-danger hover:opacity-100"
+                aria-label="删除 lane"
+                title="删除 lane（其下条目归到无 Ho）"
+              >
+                <Trash2 className="size-3" />
+              </button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        {entries.length === 0 ? (
+        {entries.length === 0 && !adding && (
           <p className="py-6 text-center text-xs text-muted">暂无条目</p>
+        )}
+        {entries.map((e) => (
+          <EntryCard
+            key={e.id}
+            entry={e}
+            isOrphan={!!e.characterId && !characterIds.has(e.characterId)}
+            onCycleStatus={() => onCycleStatus(e.id)}
+            onUpdate={(patch) => onUpdateEntry(e.id, patch)}
+            onRemove={() => onRemoveEntry(e.id)}
+          />
+        ))}
+        {adding ? (
+          <AddEntryForm
+            onCancel={() => setAdding(false)}
+            onSubmit={async (input) => {
+              await onAddEntry(input)
+              setAdding(false)
+            }}
+          />
         ) : (
-          entries.map((e) => (
-            <EntryCard
-              key={e.id}
-              entry={e}
-              isOrphan={!characterIds.has(e.characterId)}
-              onRemove={() => onRemove(e.id)}
-            />
-          ))
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="flex items-center justify-center gap-1 rounded-sm border border-dashed border-line bg-bg/50 py-1.5 text-xs text-muted transition-col hover:border-accent/50 hover:text-accent"
+          >
+            <Plus className="size-3" />
+            添加条目
+          </button>
         )}
       </CardContent>
     </Card>
   )
 }
 
-function EntryCard({
-  entry,
-  isOrphan,
-  onRemove,
-}: {
+interface EntryCardProps {
   entry: HoSlotEntry
   isOrphan: boolean
+  onCycleStatus: () => void
+  onUpdate: (patch: Partial<HoSlotEntry>) => void | Promise<void>
   onRemove: () => void
-}) {
+}
+
+function EntryCard({ entry, isOrphan, onCycleStatus, onUpdate, onRemove }: EntryCardProps) {
+  const [editing, setEditing] = useState(false)
+  const [nameDraft, setNameDraft] = useState(entry.name)
+  const [moduleDraft, setModuleDraft] = useState(entry.module)
+
+  function commitEdit() {
+    const patch: Partial<HoSlotEntry> = {}
+    if (nameDraft.trim() !== entry.name) patch.name = nameDraft.trim()
+    if (moduleDraft !== entry.module) patch.module = moduleDraft
+    if (Object.keys(patch).length > 0) onUpdate(patch)
+    setEditing(false)
+  }
+
   return (
     <div
       className={cn(
@@ -156,27 +316,94 @@ function EntryCard({
       )}
     >
       <div className="mb-1.5 flex items-center justify-between gap-1">
-        <Badge
-          variant="outline"
-          className="border-highlight/40 bg-highlight-soft px-1.5 py-0 text-[10px] text-highlight"
-        >
-          {MODULE_STATUS_LABELS[entry.status]}
-        </Badge>
         <button
           type="button"
-          onClick={onRemove}
-          className="text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
-          aria-label="删除条目"
-          title="从 Ho 位表删除（不影响角色卡）"
+          onClick={onCycleStatus}
+          className="cursor-pointer transition-opacity hover:opacity-80"
+          title="点击切换状态"
         >
-          <Trash2 className="size-3" />
+          <Badge
+            variant="outline"
+            className={cn(
+              'border-transparent px-1.5 py-0 text-[10px]',
+              entry.status === 'ongoing' && 'bg-accent-soft text-accent',
+              entry.status === 'satellite' && 'bg-accent-soft text-accent',
+              entry.status === 'paused' && 'border-line bg-bg text-muted',
+              entry.status === 'finished' && 'bg-warm-soft text-warm',
+              entry.status === 'disbanded' && 'bg-danger/15 text-danger',
+            )}
+          >
+            {MODULE_STATUS_LABELS[entry.status]}
+          </Badge>
         </button>
+        <div className="flex gap-1">
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => {
+                setNameDraft(entry.name)
+                setModuleDraft(entry.module)
+                setEditing(true)
+              }}
+              className="text-muted opacity-0 transition-opacity hover:text-ink group-hover:opacity-100"
+              aria-label="编辑"
+              title="编辑"
+            >
+              <Pencil className="size-3" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+            aria-label="删除条目"
+            title="从 Ho 位表删除（不影响角色卡）"
+          >
+            <Trash2 className="size-3" />
+          </button>
+        </div>
       </div>
 
-      <div className="truncate font-semibold text-ink">
-        {entry.name || '未命名'}
-      </div>
-      <div className="mt-0.5 truncate text-muted">{entry.module || '—'}</div>
+      {editing ? (
+        <div className="flex flex-col gap-1">
+          <Input
+            autoFocus
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            placeholder="角色名"
+            className="h-6 px-1.5 text-xs"
+          />
+          <Input
+            value={moduleDraft}
+            onChange={(e) => setModuleDraft(e.target.value)}
+            placeholder="模组名"
+            className="h-6 px-1.5 text-xs"
+          />
+          <div className="flex justify-end gap-1">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="rounded-sm px-1.5 py-0.5 text-[10px] text-muted hover:text-ink"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={commitEdit}
+              className="rounded-sm bg-accent px-1.5 py-0.5 text-[10px] text-white hover:bg-accent/80"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="truncate font-semibold text-ink">
+            {entry.name || '未命名'}
+          </div>
+          <div className="mt-0.5 truncate text-muted">{entry.module || '—'}</div>
+        </>
+      )}
 
       {isOrphan && (
         <div className="mt-2 flex items-center gap-1 text-[10px] text-highlight">
@@ -185,7 +412,7 @@ function EntryCard({
         </div>
       )}
 
-      {!isOrphan && (
+      {!isOrphan && entry.characterId && (
         <Link
           to={`/characters/${entry.characterId}`}
           className="mt-1.5 flex items-center gap-1 text-[10px] text-accent hover:underline"
@@ -200,6 +427,51 @@ function EntryCard({
           {entry.note}
         </div>
       )}
+    </div>
+  )
+}
+
+interface AddEntryFormProps {
+  onCancel: () => void
+  onSubmit: (input: { name: string; module: string; status?: ModuleStatus; note?: string }) => void | Promise<unknown>
+}
+
+function AddEntryForm({ onCancel, onSubmit }: AddEntryFormProps) {
+  const [name, setName] = useState('')
+  const [module, setModule] = useState('')
+
+  return (
+    <div className="flex flex-col gap-1 rounded-sm border border-accent/40 bg-accent-soft p-2">
+      <Input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="角色名 *"
+        className="h-6 px-1.5 text-xs"
+      />
+      <Input
+        value={module}
+        onChange={(e) => setModule(e.target.value)}
+        placeholder="模组名"
+        className="h-6 px-1.5 text-xs"
+      />
+      <div className="flex justify-end gap-1">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-sm px-1.5 py-0.5 text-[10px] text-muted hover:text-ink"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          disabled={!name.trim()}
+          onClick={() => onSubmit({ name, module })}
+          className="rounded-sm bg-accent px-1.5 py-0.5 text-[10px] text-white hover:bg-accent/80 disabled:opacity-50"
+        >
+          添加
+        </button>
+      </div>
     </div>
   )
 }
