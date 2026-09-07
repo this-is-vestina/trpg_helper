@@ -1,0 +1,108 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * shadcn base tokens（new-york 样式，OKLCH 颜色空间）
+ * 协议层 — shadcn 组件依赖的 CSS 变量
+ */
+:root {
+  --background: oklch(0.985 0.005 95);
+  --foreground: oklch(0.18 0.005 240);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.005 240);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.005 240);
+
+  --primary: oklch(0.62 0.09 195);
+  --primary-foreground: oklch(0.98 0.005 240);
+
+  --secondary: oklch(0.96 0.005 95);
+  --secondary-foreground: oklch(0.25 0.005 240);
+
+  --muted: oklch(0.96 0.005 95);
+  --muted-foreground: oklch(0.55 0.005 240);
+
+  --accent: oklch(0.62 0.09 195);
+  --accent-foreground: oklch(0.98 0.005 240);
+
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.98 0.005 240);
+
+  --border: oklch(0.92 0.005 95);
+  --input: oklch(0.92 0.005 95);
+  --ring: oklch(0.62 0.09 195);
+
+  --radius: 0.375rem;
+}
+
+/*
+ * Project design tokens (莱茵生命 + 暖驼)
+ * 对应 PROJECT_DESIGN.md §6
+ *  --color-X 自动生成 bg-X / text-X / border-X 工具类
+ */
+@theme inline {
+  --color-bg: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-ink: #1f1f1f;
+  --color-muted: #8a8a8a;
+  --color-line: #e5e5e5;
+
+  --color-accent: #4fb3a4;
+  --color-accent-soft: #e8f4f1;
+
+  --color-highlight: #e68a3c;
+  --color-highlight-soft: #faf0e6;
+
+  --color-warm: #d4a574;
+  --color-warm-soft: #faf6ee;
+
+  --color-tag-pl: #4fb3a4;
+  --color-tag-pc: #4a90c2;
+  --color-tag-npc: #e68a3c;
+  --color-tag-kp: #c75a5a;
+
+  --color-success: #4fb3a4;
+  --color-warning: #e68a3c;
+  --color-danger: #c75a5a;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-soft: 8px;
+
+  --shadow-sm: 0 1px 0 rgb(0 0 0 / 0.04);
+  --shadow-md: 0 2px 8px rgb(0 0 0 / 0.06);
+
+  --font-sans: "Source Han Sans SC", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --font-serif: "Source Han Serif SC", "Songti SC", serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html,
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    min-height: 100vh;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre,
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+}

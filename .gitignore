@@ -1,0 +1,56 @@
+# ============================================
+# TRPG Helper .gitignore
+# ============================================
+
+# ---- Logs ----
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ---- Node / 包管理器 ----
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+
+# ---- Build 输出 ----
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# ---- TypeScript ----
+*.tsbuildinfo
+
+# ---- 环境变量（真实值）----
+# ⚠️ 永远不要 commit 真实 .env 文件
+.env
+.env.local
+.env.*.local
+# .env.example 必须 commit（是模板）
+
+# ---- 编辑器 ----
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ---- 操作系统 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 测试 / 覆盖率 ----
+coverage/
+.nyc_output/
+
+# ---- 临时文件 ----
+*.tmp
+*.bak
+*.swp
+.cache/
