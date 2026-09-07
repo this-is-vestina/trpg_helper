@@ -479,9 +479,11 @@ function EntryCard({ entry, isOrphan, laneColor, onCycleStatus, onUpdate, onRemo
       ) : (
         <>
           <div className="truncate font-semibold text-ink">
-            {entry.name || '未命名'}
+            {entry.module || '未命名模组'}
           </div>
-          <div className="mt-0.5 truncate text-muted">{entry.module || '—'}</div>
+          <div className="mt-0.5 truncate text-muted">
+            角色：{entry.name || '—'}
+          </div>
         </>
       )}
 

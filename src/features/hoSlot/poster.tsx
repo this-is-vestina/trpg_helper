@@ -285,17 +285,17 @@ function drawEntryCard(
   // status badge
   drawStatusBadge(ctx, x + 14, y + 14, e.status)
 
-  // name
+  // module（模组名，主标题）
   ctx.fillStyle = '#1f1f1f'
   ctx.font = `600 14px ${FONT_CJK}`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(truncate(e.name || '未命名', 14), x + 76, y + h / 2 - 8)
+  ctx.fillText(truncate(e.module || '未命名模组', 14), x + 76, y + h / 2 - 8)
 
-  // module
+  // name（角色名，前缀「角色：」）
   ctx.fillStyle = '#8a8a8a'
   ctx.font = `400 12px ${FONT_CJK}`
-  ctx.fillText(truncate(e.module || '—', 24), x + 76, y + h / 2 + 12)
+  ctx.fillText(truncate(`角色：${e.name || '—'}`, 24), x + 76, y + h / 2 + 12)
 }
 
 function drawStatusBadge(
