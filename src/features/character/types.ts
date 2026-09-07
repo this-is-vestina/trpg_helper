@@ -43,6 +43,34 @@ export interface CharacterInfo {
   era: string // 时代
   /** 头像 dataURL（IndexedDB 存储，建议 < 500KB） */
   avatar?: string
+  /** 出生模组名（可选，会同步到 Ho 位管理） */
+  module?: string
+  /** Ho 位（1-4，0 或 undefined 表示未填） */
+  hoSlot?: number
+}
+
+/** 模组状态（存为 Character.tags 里的字符串，互斥单选） */
+export type ModuleStatus =
+  | 'satellite' // 卫星中
+  | 'ongoing' // 进行中
+  | 'paused' // 暂停中
+  | 'finished' // 已结团
+  | 'disbanded' // 已散桌
+
+export const MODULE_STATUS_VALUES: ModuleStatus[] = [
+  'satellite',
+  'ongoing',
+  'paused',
+  'finished',
+  'disbanded',
+]
+
+export const MODULE_STATUS_LABELS: Record<ModuleStatus, string> = {
+  satellite: '卫星中',
+  ongoing: '进行中',
+  paused: '暂停中',
+  finished: '已结团',
+  disbanded: '已散桌',
 }
 
 /** 单条技能 */

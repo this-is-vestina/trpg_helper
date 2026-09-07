@@ -6,6 +6,11 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import {
+  MODULE_STATUS_VALUES,
+  MODULE_STATUS_LABELS,
+  type ModuleStatus,
+} from '../types'
 
 const TAG_OPTIONS = [
   { value: 'PL', label: 'PL', description: '玩家本人', variant: 'pl' as const },
@@ -13,6 +18,10 @@ const TAG_OPTIONS = [
   { value: 'NPC', label: 'NPC', description: '非玩家角色', variant: 'npc' as const },
   { value: 'KP', label: 'KP', description: '守密人', variant: 'kp' as const },
 ]
+
+const STATUS_OPTIONS: { value: ModuleStatus; label: string }[] = MODULE_STATUS_VALUES.map(
+  (v) => ({ value: v, label: MODULE_STATUS_LABELS[v] }),
+)
 
 export function NotesSection({
   tags,
@@ -41,6 +50,12 @@ export function NotesSection({
     onTagsChange(tags.includes(value) ? tags.filter((t) => t !== value) : [...tags, value])
   }
 
+  /** 模块状态单选：选新值时清掉旧状态 */
+  function setStatus(value: ModuleStatus) {
+    const without = tags.filter((t) => !MODULE_STATUS_VALUES.includes(t as ModuleStatus))
+    onTagsChange(tags.includes(value) ? without : [...without, value])
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -49,7 +64,7 @@ export function NotesSection({
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         <div>
-          <Label className="text-xs">标签</Label>
+          <Label className="text-xs">身份标签</Label>
           <div className="mt-2 flex flex-wrap gap-2">
             {TAG_OPTIONS.map((t) => {
               const active = tags.includes(t.value)
@@ -70,6 +85,30 @@ export function NotesSection({
                     {t.label}
                   </Badge>
                   <span>{t.description}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-xs">模组状态（单选，会同步到 Ho 位管理）</Label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {STATUS_OPTIONS.map((s) => {
+              const active = tags.includes(s.value)
+              return (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => setStatus(s.value)}
+                  className={cn(
+                    'rounded-sm border px-3 py-1.5 text-xs transition-colors',
+                    active
+                      ? 'border-highlight bg-highlight-soft text-highlight'
+                      : 'border-line bg-surface text-muted hover:border-highlight/50 hover:text-ink',
+                  )}
+                >
+                  {s.label}
                 </button>
               )
             })}

@@ -121,12 +121,20 @@ function CharacterCard({
             )}
           </Link>
           <div className="min-w-0 flex-1">
-            <Link
-              to={`/characters/${c.id}`}
-              className="block truncate text-base font-semibold text-ink hover:text-accent"
-            >
-              {c.info.name || '未命名'}
-            </Link>
+            <div className="flex items-baseline gap-2">
+              <Link
+                to={`/characters/${c.id}`}
+                className="block truncate text-base font-semibold text-ink hover:text-accent"
+              >
+                {c.info.name || '未命名'}
+              </Link>
+              {c.info.module && (
+                <span className="shrink-0 text-xs text-muted">
+                  {c.info.module}
+                  {c.info.hoSlot ? ` · Ho${c.info.hoSlot}` : ''}
+                </span>
+              )}
+            </div>
             <div className="truncate text-xs text-muted">
               {c.info.player && `PL: ${c.info.player}`}
               {c.info.occupation && ` · ${c.info.occupation}`}

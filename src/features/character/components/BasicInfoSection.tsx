@@ -143,6 +143,32 @@ export function BasicInfoSection({
             />
           </Field>
         </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <Field label="出生模组" id="module">
+            <Input
+              id="module"
+              value={info.module ?? ''}
+              onChange={(e) => setField('module', e.target.value)}
+              placeholder="可选，如：克苏鲁的呼唤"
+            />
+          </Field>
+          <Field label="Ho 位" id="hoSlot">
+            <Input
+              id="hoSlot"
+              type="number"
+              min={0}
+              max={4}
+              value={info.hoSlot ?? 0}
+              onChange={(e) => setField('hoSlot', Number(e.target.value) || 0)}
+              placeholder="0 表示未填"
+              className="font-mono"
+            />
+          </Field>
+          <p className="self-end pb-1 text-xs text-muted md:col-span-1">
+            填了模组 + Ho 位后，会在「Ho 位管理」页面自动生成一个条目。
+          </p>
+        </div>
       </CardContent>
     </Card>
   )

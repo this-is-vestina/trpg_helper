@@ -29,6 +29,8 @@ export const DEFAULT_INFO = {
   residence: '',
   birthplace: '',
   era: '现代',
+  module: '',
+  hoSlot: 0,
 } as const
 
 /**
