@@ -16,7 +16,7 @@ export const SELF_INTRO_TEMPLATE: PosterTemplate = {
   fields: [
     {
       key: 'slogan',
-      label: '一句话自我介绍',
+      label: '自介',
       multiline: true,
       placeholder: '在深渊的边缘，记录每一缕微光。',
     },

@@ -8,10 +8,12 @@
  * - 所有字号固定，不随格子大小缩放
  * - 卡片底色统一 70% 半透明（globalAlpha）
  * - 大字标题：不斜体，字符之间用空格分隔
- * - 左下角固定植物图鉴装饰（半透明，PNG 图片资源）
+ * - 右下角固定植物图鉴装饰（半透明，PNG 图片资源）
+ * - footer 独立固定在页底距底 40px，不与其他一起测量
+ * - 自定义字段（customFields）与模板自带字段一致渲染
  */
 
-import type { Character, CharacterStats, PosterTemplate } from '@/features/character/types'
+import type { Character, CharacterStats, PosterField, PosterTemplate } from '@/features/character/types'
 import {
   getPaletteById,
   getHeadingFont,
@@ -26,6 +28,12 @@ const LINE_GAP = 8
 
 /** 卡片底色统一半透明度（与背景融合） */
 const CARD_ALPHA = 0.7
+
+/** 底部页脚距页底距离 */
+const FOOTER_BOTTOM_GAP = 40
+
+/** 总高度额外预留（只多不少，不保证不被截） */
+const HEIGHT_EXTRA = 250
 
 export interface PosterTheme {
   palette: PosterPalette
@@ -46,6 +54,12 @@ function defaultTheme(): PosterTheme {
   }
 }
 
+/** 自定义字段运行时形态：与模板自带字段同层级 */
+export interface CustomField extends PosterField {
+  /** 渲染时使用（与 values 字典共用 key） */
+  value?: string
+}
+
 export interface PosterRenderInput {
   template: PosterTemplate
   character: Character | null
@@ -55,6 +69,7 @@ export interface PosterRenderInput {
   }
   theme?: PosterTheme
   plantImage?: HTMLImageElement | null
+  customFields?: CustomField[]
 }
 
 export interface RecruitPosterInput {
@@ -62,6 +77,15 @@ export interface RecruitPosterInput {
   values: Record<string, string>
   theme?: PosterTheme
   plantImage?: HTMLImageElement | null
+  customFields?: CustomField[]
+}
+
+export interface ApplicationPosterInput {
+  template: PosterTemplate
+  values: Record<string, string>
+  theme?: PosterTheme
+  plantImage?: HTMLImageElement | null
+  customFields?: CustomField[]
 }
 
 // ====================== 入口 ======================
@@ -73,8 +97,14 @@ export function renderPoster(
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  const { template, character, values, theme = defaultTheme(), plantImage = null } =
-    input
+  const {
+    template,
+    character,
+    values,
+    theme = defaultTheme(),
+    plantImage = null,
+    customFields = [],
+  } = input
 
   // 1. 用 offscreen canvas 先计算总高度
   const tempCanvas = document.createElement('canvas')
@@ -89,9 +119,12 @@ export function renderPoster(
   y = measureSelfIntroDerived(tempCtx, y, character, theme)
   y = measureSelfIntroSkills(tempCtx, y, character, theme)
   y = measureSelfIntroBackground(tempCtx, y, values.background, theme)
-  y = measureFooter(tempCtx, y, theme)
+  for (const cf of customFields) {
+    y = measureParagraph(tempCtx, y, cf.value ?? '', theme)
+  }
+  // footer 独立固定，不再加 y
 
-  const totalHeight = Math.max(y + MARGIN + 320, 800)
+  const totalHeight = Math.max(y + MARGIN + HEIGHT_EXTRA, 800)
 
   // 2. 实际绘制
   canvas.width = template.size.w
@@ -106,9 +139,11 @@ export function renderPoster(
   cy = drawSelfIntroDerived(ctx, cy, character, theme)
   cy = drawSelfIntroSkills(ctx, cy, character, theme)
   cy = drawSelfIntroBackground(ctx, cy, values.background, theme)
-  cy = drawFooter(ctx, cy, theme)
+  for (const cf of customFields) {
+    cy = drawParagraph(ctx, cy, cf.value ?? '', theme)
+  }
 
-  // 左下角固定植物图鉴（半透明，跟随最终高度）
+  drawFooter(ctx, totalHeight, theme)
   drawPlantDecoration(ctx, template.size.w, totalHeight, plantImage)
 }
 
@@ -119,7 +154,13 @@ export function renderRecruitPoster(
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  const { template, values, theme = defaultTheme(), plantImage = null } = input
+  const {
+    template,
+    values,
+    theme = defaultTheme(),
+    plantImage = null,
+    customFields = [],
+  } = input
 
   // 先测量
   const tempCanvas = document.createElement('canvas')
@@ -145,9 +186,11 @@ export function renderRecruitPoster(
   )
   y = measureRecruitContact(tempCtx, y, values.contact ?? '', theme)
   y = measureRecruitNotes(tempCtx, y, values.notes ?? '', theme)
-  y = measureFooter(tempCtx, y, theme)
+  for (const cf of customFields) {
+    y = measureParagraph(tempCtx, y, cf.value ?? '', theme)
+  }
 
-  const totalHeight = Math.max(y + MARGIN + 320, 800)
+  const totalHeight = Math.max(y + MARGIN + HEIGHT_EXTRA, 800)
 
   canvas.width = template.size.w
   canvas.height = totalHeight
@@ -172,8 +215,67 @@ export function renderRecruitPoster(
   )
   cy = drawRecruitContact(ctx, cy, values.contact ?? '', theme)
   cy = drawRecruitNotes(ctx, cy, values.notes ?? '', theme)
-  cy = drawFooter(ctx, cy, theme)
+  for (const cf of customFields) {
+    cy = drawParagraph(ctx, cy, cf.value ?? '', theme)
+  }
 
+  drawFooter(ctx, totalHeight, theme)
+  drawPlantDecoration(ctx, template.size.w, totalHeight, plantImage)
+}
+
+export function renderApplicationPoster(
+  canvas: HTMLCanvasElement,
+  input: ApplicationPosterInput,
+): void {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  const {
+    template,
+    values,
+    theme = defaultTheme(),
+    plantImage = null,
+    customFields = [],
+  } = input
+
+  // 测量
+  const tempCanvas = document.createElement('canvas')
+  tempCanvas.width = template.size.w
+  tempCanvas.height = 4096
+  const tempCtx = tempCanvas.getContext('2d')!
+  let y = MARGIN
+  y = measureApplicationHeader(tempCtx, y, values, theme)
+  y = measureApplicationInfo(tempCtx, y, values, theme)
+  y = measureApplicationSlogan(tempCtx, y, values.slogan ?? '', theme)
+  y = measureParagraph(tempCtx, y, values.pitch ?? '', theme, '申请陈述')
+  y = measureParagraph(tempCtx, y, values.experience ?? '', theme, '跑团经历')
+  y = measureApplicationInfo2(tempCtx, y, values, theme)
+  y = measureParagraph(tempCtx, y, values.preference ?? '', theme, '模组偏好')
+  y = measureParagraph(tempCtx, y, values.notes ?? '', theme, '备注')
+  for (const cf of customFields) {
+    y = measureParagraph(tempCtx, y, cf.value ?? '', theme)
+  }
+
+  const totalHeight = Math.max(y + MARGIN + HEIGHT_EXTRA, 800)
+
+  canvas.width = template.size.w
+  canvas.height = totalHeight
+  drawBackground(ctx, template.size.w, totalHeight, theme)
+
+  let cy = MARGIN
+  cy = drawApplicationHeader(ctx, cy, values, theme)
+  cy = drawApplicationInfo(ctx, cy, values, theme)
+  cy = drawApplicationSlogan(ctx, cy, values.slogan ?? '', theme)
+  cy = drawParagraph(ctx, cy, values.pitch ?? '', theme, '申请陈述')
+  cy = drawParagraph(ctx, cy, values.experience ?? '', theme, '跑团经历')
+  cy = drawApplicationInfo2(ctx, cy, values, theme)
+  cy = drawParagraph(ctx, cy, values.preference ?? '', theme, '模组偏好')
+  cy = drawParagraph(ctx, cy, values.notes ?? '', theme, '备注')
+  for (const cf of customFields) {
+    cy = drawParagraph(ctx, cy, cf.value ?? '', theme)
+  }
+
+  drawFooter(ctx, totalHeight, theme)
   drawPlantDecoration(ctx, template.size.w, totalHeight, plantImage)
 }
 
@@ -200,7 +302,6 @@ function drawPlantDecoration(
   img: HTMLImageElement | null,
 ) {
   if (!img || !img.naturalWidth) return
-  // 固定显示宽度为海报宽度的 ~26%，按原比例缩放
   const targetW = w * 0.26
   const ratio = img.naturalHeight / img.naturalWidth
   const drawW = targetW
@@ -243,33 +344,24 @@ function drawSectionTitle(
   ctx.fillText(`— ${title} —`, MARGIN, y)
 }
 
+/**
+ * 页脚：固定在页底距底 FOOTER_BOTTOM_GAP，与正文内容独立计算。
+ * 不参与总高度测量流程。
+ */
 function drawFooter(
   ctx: CanvasRenderingContext2D,
-  y: number,
+  totalHeight: number,
   theme: PosterTheme,
-): number {
-  const gap = 40
-  const lineY = y + gap
-  drawSectionDivider(ctx, lineY, theme)
-
+) {
   ctx.fillStyle = theme.palette.muted
   ctx.font = `400 14px ${theme.bodyFont}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(
-    'Made with TRPG Helper · 本地生成 · 数据不上传',
+    'Made by TRPG Helper',
     MARGIN + CONTENT_W / 2,
-    lineY + 24,
+    totalHeight - FOOTER_BOTTOM_GAP,
   )
-  return lineY + 40
-}
-
-function measureFooter(
-  _ctx: CanvasRenderingContext2D,
-  y: number,
-  _theme: PosterTheme,
-): number {
-  return y + 40 + 40
 }
 
 // ====================== 自介模板 ======================
@@ -285,7 +377,7 @@ function drawSelfIntroHeader(
   const occupation = c?.info.occupation.trim()
   const era = c?.info.era.trim()
 
-  // 大字标题：不斜体、字间空格、字体大小固定
+  // 大字标题
   ctx.fillStyle = theme.palette.ink
   ctx.font = `700 64px ${theme.headingFont}`
   ctx.textAlign = 'center'
@@ -293,7 +385,7 @@ function drawSelfIntroHeader(
   ctx.fillText(spaceChars(truncate(name, 14)), MARGIN + CONTENT_W / 2, y)
   let cy = y + 90
 
-  // 副标题：PL · 职业 · 时代
+  // 副标题：PL · 职业 · 时代 · 年龄
   const meta: string[] = []
   if (player) meta.push(`PL · ${player}`)
   if (occupation) meta.push(occupation)
@@ -616,7 +708,7 @@ function drawRecruitHeader(
   const moduleType = values.moduleType ?? ''
   const status = values.status ?? ''
 
-  // 大字标题：不斜体、字间空格、字体大小固定
+  // 大字标题
   ctx.fillStyle = theme.palette.ink
   ctx.font = `700 64px ${theme.headingFont}`
   ctx.textAlign = 'center'
@@ -884,82 +976,6 @@ function measureRecruitNotes(
 
 // ====================== 应征模板 ======================
 
-export interface ApplicationPosterInput {
-  template: PosterTemplate
-  values: Record<string, string>
-  theme?: PosterTheme
-  plantImage?: HTMLImageElement | null
-}
-
-export function renderApplicationPoster(
-  canvas: HTMLCanvasElement,
-  input: ApplicationPosterInput,
-): void {
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-
-  const { template, values, theme = defaultTheme(), plantImage = null } = input
-
-  // 测量
-  const tempCanvas = document.createElement('canvas')
-  tempCanvas.width = template.size.w
-  tempCanvas.height = 4096
-  const tempCtx = tempCanvas.getContext('2d')!
-  let y = MARGIN
-  y = measureApplicationHeader(tempCtx, y, values, theme)
-  y = measureApplicationInfo(tempCtx, y, values, theme)
-  y = measureApplicationSlogan(tempCtx, y, values.slogan ?? '', theme)
-  y = measureApplicationParagraph(
-    tempCtx,
-    y,
-    '申请陈述',
-    values.pitch ?? '',
-    theme,
-  )
-  y = measureApplicationParagraph(
-    tempCtx,
-    y,
-    '跑团经历',
-    values.experience ?? '',
-    theme,
-  )
-  y = measureApplicationInfo2(tempCtx, y, values, theme)
-  y = measureApplicationParagraph(
-    tempCtx,
-    y,
-    '模组偏好',
-    values.preference ?? '',
-    theme,
-  )
-  y = measureApplicationParagraph(
-    tempCtx,
-    y,
-    '备注',
-    values.notes ?? '',
-    theme,
-  )
-  y = measureFooter(tempCtx, y, theme)
-
-  const totalHeight = Math.max(y + MARGIN + 320, 800)
-
-  canvas.width = template.size.w
-  canvas.height = totalHeight
-  drawBackground(ctx, template.size.w, totalHeight, theme)
-
-  let cy = MARGIN
-  cy = drawApplicationHeader(ctx, cy, values, theme)
-  cy = drawApplicationInfo(ctx, cy, values, theme)
-  cy = drawApplicationSlogan(ctx, cy, values.slogan ?? '', theme)
-  cy = drawApplicationParagraph(ctx, cy, '申请陈述', values.pitch ?? '', theme)
-  cy = drawApplicationParagraph(ctx, cy, '跑团经历', values.experience ?? '', theme)
-  cy = drawApplicationInfo2(ctx, cy, values, theme)
-  cy = drawApplicationParagraph(ctx, cy, '模组偏好', values.preference ?? '', theme)
-  cy = drawApplicationParagraph(ctx, cy, '备注', values.notes ?? '', theme)
-  cy = drawFooter(ctx, cy, theme)
-
-  drawPlantDecoration(ctx, template.size.w, totalHeight, plantImage)
-}
-
 function drawApplicationHeader(
   ctx: CanvasRenderingContext2D,
   y: number,
@@ -969,7 +985,7 @@ function drawApplicationHeader(
   const name = values.name?.trim() ?? ''
   const player = values.player?.trim() ?? ''
 
-  // 大字标题：不斜体、字间空格、字体大小固定
+  // 大字标题
   ctx.fillStyle = theme.palette.ink
   ctx.font = `700 64px ${theme.headingFont}`
   ctx.textAlign = 'center'
@@ -977,7 +993,7 @@ function drawApplicationHeader(
   ctx.fillText(spaceChars('应征申请'), MARGIN + CONTENT_W / 2, y)
   let cy = y + 90
 
-  // 副标题：角色名 · PL
+  // 副标题：角色名 + PL
   const meta: string[] = []
   if (name) meta.push(name)
   if (player) meta.push(`PL · ${player}`)
@@ -1004,7 +1020,7 @@ function measureApplicationHeader(
   return cy
 }
 
-/** 第一组基础信息卡：角色 / PL / 联系方式 */
+/** 第一组基础信息卡：PL + 联系方式（去掉角色名） */
 function drawApplicationInfo(
   ctx: CanvasRenderingContext2D,
   y: number,
@@ -1015,7 +1031,6 @@ function drawApplicationInfo(
     ctx,
     y,
     [
-      { label: '角色名', value: values.name ?? '' },
       { label: 'PL', value: values.player ?? '' },
       { label: '联系方式', value: values.contact ?? '' },
     ],
@@ -1023,7 +1038,7 @@ function drawApplicationInfo(
   )
 }
 
-/** 第二组基础信息卡：可用时间 / 模组偏好概览（可选） */
+/** 第二组基础信息卡：可用时间 */
 function drawApplicationInfo2(
   ctx: CanvasRenderingContext2D,
   y: number,
@@ -1079,7 +1094,7 @@ function measureApplicationInfo(
   values: Record<string, string>,
   _theme: PosterTheme,
 ): number {
-  const visible = [values.name ?? '', values.player ?? '', values.contact ?? '']
+  const visible = [values.player ?? '', values.contact ?? '']
     .filter((v) => v.trim())
   if (visible.length === 0) return y
   return y + 76 + LINE_GAP + 10
@@ -1138,17 +1153,22 @@ function measureApplicationSlogan(
   return y + 44 + 32 * lines.length + LINE_GAP + 10
 }
 
-function drawApplicationParagraph(
+/** 通用段落：标题 + 正文（title 留空表示不画 title） */
+function drawParagraph(
   ctx: CanvasRenderingContext2D,
   y: number,
-  title: string,
   text: string,
   theme: PosterTheme,
+  title?: string,
 ): number {
   const t = text.trim()
   if (!t) return y
-  drawSectionTitle(ctx, y, title, theme)
-  let cy = y + 30
+  let cy = y
+
+  if (title) {
+    drawSectionTitle(ctx, cy, title, theme)
+    cy += 30
+  }
 
   const bodyFont = `400 18px ${theme.bodyFont}`
   ctx.fillStyle = theme.palette.ink
@@ -1163,19 +1183,21 @@ function drawApplicationParagraph(
   return cy + lineH * lines.length + LINE_GAP + 10
 }
 
-function measureApplicationParagraph(
+function measureParagraph(
   ctx: CanvasRenderingContext2D,
   y: number,
-  _title: string,
   text: string,
   theme: PosterTheme,
+  title?: string,
 ): number {
   const t = text.trim()
   if (!t) return y
+  let cy = y
+  if (title) cy += 30
   const bodyFont = `400 18px ${theme.bodyFont}`
   ctx.font = bodyFont
   const lines = wrapText(ctx, t, CONTENT_W, bodyFont)
-  return y + 30 + 28 * lines.length + LINE_GAP + 10
+  return cy + 28 * lines.length + LINE_GAP + 10
 }
 
 // ====================== 辅助 ======================

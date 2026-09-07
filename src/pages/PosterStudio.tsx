@@ -1,15 +1,16 @@
 /**
  * 海报工作台（Phase 3-A 通用化）
- * - 支持多模板（自介 / 招募）
+ * - 支持多模板（自介 / 招募 / 应征）
  * - 绑定角色卡 → 自介模板自动取 9 维 + 衍生 + 技能
- * - 招募模板纯文本字段
+ * - 招募 / 应征模板纯文本字段
  * - Canvas 实时预览 → 下载 PNG
  * - 配色 / 西文字体 / 中文字体 独立可选
- * - 左下角固定植物图鉴装饰（半透明）
+ * - 右下角固定植物图鉴装饰（半透明）
+ * - 支持自定义字段（与模板自带字段同层级）
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ImagePlus, Download, RotateCcw, User, Megaphone, Send } from 'lucide-react'
+import { ImagePlus, Download, RotateCcw, User, Megaphone, Send, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -34,12 +35,18 @@ import {
   renderApplicationPoster,
   downloadCanvasAsPng,
 } from '@/features/poster'
-import type { PosterTheme } from '@/features/poster'
+import type { CustomField, PosterTheme } from '@/features/poster'
 import { useCharacterStore } from '@/features/character'
 import type { Character } from '@/features/character'
 
 const DEFAULT_MONO_FONT =
   '"JetBrains Mono", "Fira Code", ui-monospace, monospace'
+
+interface CustomFieldDraft {
+  key: string
+  label: string
+  multiline: boolean
+}
 
 export function PosterStudio() {
   const [templateId, setTemplateId] = useState(SELF_INTRO_TEMPLATE.id)
@@ -49,6 +56,8 @@ export function PosterStudio() {
   const [bodyFontId, setBodyFontId] = useState(POSTER_CJK_FONTS[0].id)
   // 通用字段值：key → 字符串
   const [values, setValues] = useState<Record<string, string>>({})
+  // 自定义字段（key / label / multiline），值仍存在 values 字典里
+  const [customFields, setCustomFields] = useState<CustomFieldDraft[]>([])
 
   const template = useMemo(
     () => POSTER_TEMPLATES.find((t) => t.id === templateId) ?? SELF_INTRO_TEMPLATE,
@@ -66,11 +75,12 @@ export function PosterStudio() {
     return characters.find((c) => c.id === characterId) ?? null
   }, [characterId, characters])
 
-  // 换模板时清空 values，避免遗留字段
+  // 换模板时清空 values + 自定义字段
   const prevTemplateIdRef = useRef(templateId)
   useEffect(() => {
     if (prevTemplateIdRef.current !== templateId) {
       setValues({})
+      setCustomFields([])
       prevTemplateIdRef.current = templateId
     }
   }, [templateId])
@@ -122,6 +132,13 @@ export function PosterStudio() {
       bodyFont: getCjkFont(bodyFontId).value,
       monoFont: DEFAULT_MONO_FONT,
     }
+    const customFieldsForRender: CustomField[] = customFields.map((cf) => ({
+      key: cf.key,
+      label: cf.label,
+      multiline: cf.multiline,
+      value: values[cf.key] ?? '',
+    }))
+
     if (template.type === 'self-intro') {
       renderPoster(canvas, {
         template,
@@ -129,11 +146,24 @@ export function PosterStudio() {
         values: { slogan: values.slogan ?? '', background: values.background ?? '' },
         theme,
         plantImage,
+        customFields: customFieldsForRender,
       })
     } else if (template.type === 'recruit') {
-      renderRecruitPoster(canvas, { template, values, theme, plantImage })
+      renderRecruitPoster(canvas, {
+        template,
+        values,
+        theme,
+        plantImage,
+        customFields: customFieldsForRender,
+      })
     } else if (template.type === 'apply') {
-      renderApplicationPoster(canvas, { template, values, theme, plantImage })
+      renderApplicationPoster(canvas, {
+        template,
+        values,
+        theme,
+        plantImage,
+        customFields: customFieldsForRender,
+      })
     }
   }, [
     template,
@@ -143,6 +173,7 @@ export function PosterStudio() {
     headingFontId,
     bodyFontId,
     plantImage,
+    customFields,
   ])
 
   function setField(key: string, v: string) {
@@ -153,6 +184,7 @@ export function PosterStudio() {
 
   function handleReset() {
     setValues({})
+    setCustomFields([])
     sloganTouchedRef.current = true
     backgroundTouchedRef.current = true
   }
@@ -363,6 +395,52 @@ export function PosterStudio() {
                   </div>
                 )
               })}
+
+              {/* 自定义字段：与模板自带字段同层级渲染 */}
+              {customFields.map((cf) => {
+                const current = values[cf.key] ?? ''
+                return (
+                  <div key={cf.key} className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor={`field-${cf.key}`}>{cf.label}</Label>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCustom(cf.key)}
+                        className="flex items-center gap-1 text-xs text-muted hover:text-danger"
+                      >
+                        <X className="size-3" />
+                        删除
+                      </button>
+                    </div>
+                    {cf.multiline ? (
+                      <Textarea
+                        id={`field-${cf.key}`}
+                        rows={3}
+                        value={current}
+                        onChange={(e) => setField(cf.key, e.target.value)}
+                      />
+                    ) : (
+                      <Input
+                        id={`field-${cf.key}`}
+                        value={current}
+                        onChange={(e) => setField(cf.key, e.target.value)}
+                      />
+                    )}
+                  </div>
+                )
+              })}
+
+              <CustomFieldAdder
+                onAdd={(cf) => {
+                  setCustomFields((prev) => [...prev, cf])
+                  setValues((prev) => ({ ...prev, [cf.key]: '' }))
+                }}
+                existingKeys={new Set([
+                  ...template.fields.map((f) => f.key),
+                  ...customFields.map((cf) => cf.key),
+                ])}
+              />
+
               <Button type="button" variant="outline" size="sm" onClick={handleReset}>
                 <RotateCcw />
                 清空字段
@@ -410,6 +488,112 @@ export function PosterStudio() {
             </Button>
           </div>
         </div>
+      </div>
+    </div>
+  )
+
+  function handleRemoveCustom(key: string) {
+    setCustomFields((prev) => prev.filter((cf) => cf.key !== key))
+    setValues((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+}
+
+/** "+ 添加自定义字段" 内联小表单 */
+function CustomFieldAdder({
+  onAdd,
+  existingKeys,
+}: {
+  onAdd: (cf: CustomFieldDraft) => void
+  existingKeys: Set<string>
+}) {
+  const [adding, setAdding] = useState(false)
+  const [key, setKey] = useState('')
+  const [label, setLabel] = useState('')
+  const [multiline, setMultiline] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reset() {
+    setKey('')
+    setLabel('')
+    setMultiline(false)
+    setError(null)
+  }
+
+  function handleAdd() {
+    const k = key.trim().replace(/\s+/g, '_').toLowerCase()
+    const l = label.trim() || k || '自定义字段'
+    if (!k) {
+      setError('请填写字段 key')
+      return
+    }
+    if (existingKeys.has(k)) {
+      setError(`key "${k}" 已存在`)
+      return
+    }
+    onAdd({ key: k, label: l, multiline })
+    reset()
+    setAdding(false)
+  }
+
+  if (!adding) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          reset()
+          setAdding(true)
+        }}
+      >
+        <Plus />
+        添加自定义字段
+      </Button>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-sm border border-line bg-surface p-3">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted">字段 key（英文标识）</Label>
+          <Input
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="myField"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted">显示名</Label>
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="我的字段"
+          />
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-xs text-muted">
+        <input
+          type="checkbox"
+          checked={multiline}
+          onChange={(e) => setMultiline(e.target.checked)}
+          className="accent-accent"
+        />
+        多行
+      </label>
+      {error && <p className="text-xs text-danger">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={() => setAdding(false)}>
+          取消
+        </Button>
+        <Button type="button" size="sm" onClick={handleAdd}>
+          <Plus />
+          添加
+        </Button>
       </div>
     </div>
   )

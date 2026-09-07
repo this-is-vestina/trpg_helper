@@ -20,6 +20,7 @@ export type {
   RecruitPosterInput,
   ApplicationPosterInput,
   PosterTheme,
+  CustomField,
 } from './renderer'
 export {
   POSTER_PALETTES,
