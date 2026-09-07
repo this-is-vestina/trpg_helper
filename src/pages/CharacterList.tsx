@@ -1,20 +1,45 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Plus, Copy, Trash2, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { useCharacterStore } from '@/features/character'
+import { cn } from '@/lib/utils'
+
+const TAG_VARIANT: Record<string, 'pl' | 'pc' | 'npc' | 'kp' | 'default' | 'warm'> = {
+  PL: 'pl',
+  PC: 'pc',
+  NPC: 'npc',
+  KP: 'kp',
+}
 
 /**
- * 角色卡列表（Phase 1 空状态）
- * Phase 2 接入 IndexedDB repo 后展示真实数据
+ * 角色卡列表（接入 Zustand store）
+ * - 进入页面自动 loadAll()
+ * - 显示：头像 / 名字 / 玩家 / 职业 / 9 维关键值 / 标签 / 更新时间
+ * - 操作：编辑（进 edit 页） / 复制（duplicate） / 删除
  */
 export function CharacterList() {
+  const characters = useCharacterStore((s) => s.characters)
+  const isLoading = useCharacterStore((s) => s.isLoading)
+  const error = useCharacterStore((s) => s.error)
+  const loadAll = useCharacterStore((s) => s.loadAll)
+  const duplicate = useCharacterStore((s) => s.duplicate)
+  const remove = useCharacterStore((s) => s.remove)
+
+  useEffect(() => {
+    loadAll()
+  }, [loadAll])
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">角色卡</h1>
-          <p className="mt-1 text-sm text-muted">管理你的所有 COC7 调查员。</p>
+          <p className="mt-1 text-sm text-muted">
+            管理你的所有 COC7 调查员 · 共 {characters.length} 张
+          </p>
         </div>
         <Button asChild variant="highlight">
           <Link to="/characters/new">
@@ -24,7 +49,32 @@ export function CharacterList() {
         </Button>
       </div>
 
-      <EmptyState />
+      {error && (
+        <div className="rounded-sm border border-danger bg-danger/10 px-3 py-2 text-sm text-danger">
+          {error}
+        </div>
+      )}
+
+      {isLoading && characters.length === 0 ? (
+        <p className="text-sm text-muted">加载中…</p>
+      ) : characters.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {characters.map((c) => (
+            <CharacterCard
+              key={c.id}
+              c={c}
+              onDuplicate={() => duplicate(c.id)}
+              onDelete={() => {
+                if (confirm(`确认删除「${c.info.name || '未命名'}」？此操作不可恢复。`)) {
+                  remove(c.id)
+                }
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -34,10 +84,83 @@ function EmptyState() {
     <Card className="border-dashed">
       <CardHeader className="items-center text-center">
         <CardTitle>还没有角色卡</CardTitle>
-        <CardDescription>点击右上角"新建角色卡"开始，或在 Phase 2 启用 .st 格式导入。</CardDescription>
+        <CardDescription>
+          点击右上角"新建角色卡"开始填写 · Phase 2-C 接入 .st 快捷导入
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex justify-center pb-8">
-        <Badge variant="warm">Phase 2 启用</Badge>
+        <Badge variant="warm">本地存储 · 数据不上传</Badge>
+      </CardContent>
+    </Card>
+  )
+}
+
+function CharacterCard({
+  c,
+  onDuplicate,
+  onDelete,
+}: {
+  c: import('@/features/character').Character
+  onDuplicate: () => void
+  onDelete: () => void
+}) {
+  return (
+    <Card className="group transition-colors hover:border-accent/50">
+      <CardHeader>
+        <div className="flex items-start gap-3">
+          <Link
+            to={`/characters/${c.id}`}
+            className="size-14 shrink-0 overflow-hidden rounded-soft border-2 border-warm bg-bg"
+          >
+            {c.info.avatar ? (
+              <img src={c.info.avatar} alt="" className="size-full object-cover" />
+            ) : (
+              <div className="flex size-full items-center justify-center text-muted">
+                <User className="size-6" />
+              </div>
+            )}
+          </Link>
+          <div className="min-w-0 flex-1">
+            <Link
+              to={`/characters/${c.id}`}
+              className="block truncate text-base font-semibold text-ink hover:text-accent"
+            >
+              {c.info.name || '未命名'}
+            </Link>
+            <div className="truncate text-xs text-muted">
+              {c.info.player && `PL: ${c.info.player}`}
+              {c.info.occupation && ` · ${c.info.occupation}`}
+              {c.info.age ? ` · ${c.info.age}岁` : ''}
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {c.tags.map((t) => (
+                <Badge
+                  key={t}
+                  variant={TAG_VARIANT[t] ?? 'outline'}
+                  className={cn('px-1.5 py-0 text-[10px]')}
+                >
+                  {t}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="flex items-center justify-between">
+        <div className="flex gap-3 font-mono text-[10px] text-muted">
+          <span>HP {c.derived.hp}</span>
+          <span>SAN {c.derived.san}</span>
+          <span>MP {c.derived.mp}</span>
+          <span>MOV {c.derived.mov}</span>
+        </div>
+        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <Button type="button" variant="ghost" size="icon" onClick={onDuplicate} title="复制">
+            <Copy />
+          </Button>
+          <Button type="button" variant="ghost" size="icon" onClick={onDelete} title="删除">
+            <Trash2 className="text-danger" />
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )
