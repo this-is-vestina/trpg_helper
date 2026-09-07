@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Users, ImagePlus, ScrollText } from 'lucide-react'
+import { Users, ImagePlus, ScrollText, LayoutGrid } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -42,6 +42,7 @@ function Header() {
 const navItems = [
   { to: '/', label: '首页', icon: ScrollText, end: true },
   { to: '/characters', label: '角色卡', icon: Users, end: false },
+  { to: '/ho-slots', label: 'Ho 位', icon: LayoutGrid, end: false },
   { to: '/posters', label: '海报', icon: ImagePlus, end: false },
 ]
 

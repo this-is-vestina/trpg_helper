@@ -1,11 +1,11 @@
 /**
  * 角色卡全局状态（Zustand）
- * - state: 角色列表 / 当前选中 / 加载态
- * - actions: 异步方法包装 repo
+ * - state: 角色列表 / 加载态 / 错误
+ * - actions: 异步方法包装 repo + 同步到 hoSlot store（单向）
  *
- * 设计原则：
- * - store 不持有业务逻辑（仅调用 repo）
- * - UI 通过 selector 订阅，组件粒度细可避免不必要重渲染
+ * 跨 feature 依赖说明（PROJECT_DESIGN §4 破例）：
+ *   character → hoSlot 是允许的单向依赖（character 是源，hoSlot 是派生视图）
+ *   hoSlot 不会反向 import character store
  */
 
 import { create } from 'zustand'
@@ -13,13 +13,17 @@ import type { Character } from './types'
 import { indexedDbCharacterRepo } from './indexedDbRepo'
 import { createBlankCharacter, cloneCharacter } from './defaults'
 import { downloadJson } from '@/lib/download'
+import { useHoSlotStore, type CharacterSnapshot } from '@/features/hoSlot'
+
+function toSnapshot(c: Character): CharacterSnapshot {
+  return { id: c.id, info: c.info, tags: c.tags }
+}
 
 interface CharacterState {
   characters: Character[]
   isLoading: boolean
   error: string | null
 
-  // Actions
   loadAll: () => Promise<void>
   getById: (id: string) => Character | undefined
   create: () => Promise<Character>
@@ -62,6 +66,8 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
     const dup = cloneCharacter(src)
     await indexedDbCharacterRepo.save(dup)
     set((s) => ({ characters: [dup, ...s.characters] }))
+    // 同步到 hoSlot（duplicate 是新 characterId，自动建 entry）
+    await useHoSlotStore.getState().ensureFromCharacter(toSnapshot(dup))
     return dup
   },
 
@@ -94,11 +100,14 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       }
       return { characters: next.sort((a, b) => b.updatedAt - a.updatedAt) }
     })
+    // 同步到 hoSlot（新建和编辑都走这里）
+    await useHoSlotStore.getState().syncFromCharacter(toSnapshot(merged))
   },
 
   async remove(id) {
     await indexedDbCharacterRepo.delete(id)
     set((s) => ({ characters: s.characters.filter((c) => c.id !== id) }))
+    // 按需求：删除角色不删 ho 位 entry（保留为孤儿， UI 显示"该角色已删除"）
   },
 
   async exportAll() {
