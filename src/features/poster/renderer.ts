@@ -1,0 +1,438 @@
+/**
+ * 海报 Canvas 2D 渲染器
+ * - 坐标以 1080×1440 为基准（MVP 自介模板尺寸）
+ * - 调用 renderPoster() 把 input 画到指定 canvas 上
+ * - 颜色用项目 tokens 硬编码（避免读 CSS 变量带来的复杂度）
+ *
+ * 自介模板布局：
+ *   ┌─ 顶部装饰线 + "INVESTIGATOR PROFILE" ─┐
+ *   │  调查员名（48pt 粗体）                  │
+ *   │  PL · 职业 · 职业序号                   │
+ *   │  ┌─ slogan 框 ─┐                       │
+ *   │  │   一句话自我介绍  │                  │
+ *   │  └──────────────┘                      │
+ *   │  模块 · Ho 位                          │
+ *   │  ── 核心属性 3x3 网格 ──                │
+ *   │  HP / SAN / MP / MOV                   │
+ *   │  ── 技能（按 total 排序，前 14）──       │
+ *   │  ── 背景故事 ──                         │
+ *   │  footer                                │
+ *   └──────────────────────────────────────┘
+ */
+
+import type { Character, CharacterStats } from '@/features/character/types'
+import type { PosterTemplate } from '@/features/character/types'
+
+// ===== 颜色硬编码（与 globals.css tokens 对齐）=====
+
+const COLOR = {
+  bgTop: '#f4ecde',
+  bgBot: '#e8d9c0',
+  accent: '#4fb3a4',
+  accentSoft: '#dff0ec',
+  highlight: '#e68a3c',
+  highlightSoft: '#f7e1cc',
+  warm: '#d4a574',
+  warmSoft: '#f0e3d0',
+  ink: '#2a2520',
+  muted: '#8a7e6d',
+  line: '#c8b89e',
+  danger: '#c25450',
+} as const
+
+export interface PosterRenderInput {
+  template: PosterTemplate
+  character: Character | null
+  values: {
+    slogan: string
+    background: string
+  }
+}
+
+export function renderPoster(canvas: HTMLCanvasElement, input: PosterRenderInput): void {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  const { template, character, values } = input
+  canvas.width = template.size.w
+  canvas.height = template.size.h
+
+  // 1. 背景渐变
+  drawBackground(ctx, template.size.w, template.size.h)
+
+  // 2. 顶部装饰
+  drawHeader(ctx, template.size.w)
+
+  // 3. 身份信息（名字 + PL/职业）
+  drawIdentity(ctx, character)
+
+  // 4. Slogan
+  drawSlogan(ctx, values.slogan)
+
+  // 5. 模块 + Ho 位
+  drawModule(ctx, character)
+
+  // 6. 核心属性网格
+  drawStatsGrid(ctx, character)
+
+  // 7. 衍生值
+  drawDerived(ctx, character)
+
+  // 8. 技能（按 total 排序）
+  drawSkills(ctx, character)
+
+  // 9. 背景故事
+  drawBackground_(ctx, values.background)
+
+  // 10. 底部 footer
+  drawFooter(ctx, template.size.w, template.size.h)
+}
+
+// ============================ 私有绘制函数 ============================
+
+function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  const g = ctx.createLinearGradient(0, 0, 0, height)
+  g.addColorStop(0, COLOR.bgTop)
+  g.addColorStop(1, COLOR.bgBot)
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, width, height)
+
+  // 左上 + 右下 加装饰小三角（青绿）
+  ctx.fillStyle = COLOR.accentSoft
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+  ctx.lineTo(140, 0)
+  ctx.lineTo(0, 140)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.fillStyle = COLOR.warmSoft
+  ctx.beginPath()
+  ctx.moveTo(width, height)
+  ctx.lineTo(width - 140, height)
+  ctx.lineTo(width, height - 140)
+  ctx.closePath()
+  ctx.fill()
+}
+
+function drawHeader(ctx: CanvasRenderingContext2D, width: number) {
+  // 顶部水平细线
+  ctx.strokeStyle = COLOR.line
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(60, 60)
+  ctx.lineTo(width - 60, 60)
+  ctx.stroke()
+
+  // 标签 "INVESTIGATOR PROFILE"
+  ctx.fillStyle = COLOR.muted
+  ctx.font = `500 22px ${'serif'}`
+  ctx.textBaseline = 'middle'
+  ctx.textAlign = 'left'
+  ctx.fillText('TRPG · INVESTIGATOR PROFILE', 60, 96)
+
+  // 右侧装饰方块
+  ctx.fillStyle = COLOR.accent
+  ctx.fillRect(width - 100, 80, 40, 6)
+  ctx.fillStyle = COLOR.warm
+  ctx.fillRect(width - 50, 80, 6, 40)
+}
+
+function drawIdentity(ctx: CanvasRenderingContext2D, c: Character | null) {
+  const name = c?.info.name.trim() || '未命名调查员'
+  const player = c?.info.player.trim()
+  const occupation = c?.info.occupation.trim()
+  const occupationNo = c?.info.occupationNo
+
+  // 主标题：调查员名
+  ctx.fillStyle = COLOR.ink
+  ctx.font = `700 56px ${'serif'}`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  ctx.fillText(truncate(name, 14), 60, 140)
+
+  // 副标题：PL · 职业
+  ctx.fillStyle = COLOR.muted
+  ctx.font = `400 24px sans-serif`
+  ctx.fillText(
+    [player && `PL · ${player}`, occupation && occupation, occupationNo && `№ ${occupationNo}`]
+      .filter(Boolean)
+      .join('  ·  ') || '— 暂无身份信息 —',
+    60,
+    220,
+  )
+
+  // 性别 / 年龄 / 住地（次要元数据）
+  const meta: string[] = []
+  if (c?.info.age) meta.push(`${c.info.age} 岁`)
+  if (c?.info.gender) meta.push(c.info.gender)
+  if (c?.info.residence) meta.push(c.info.residence)
+  if (c?.info.era) meta.push(c.info.era)
+  if (meta.length > 0) {
+    ctx.fillStyle = COLOR.warm
+    ctx.font = `500 18px sans-serif`
+    ctx.fillText(meta.join('  ·  '), 60, 258)
+  }
+}
+
+function drawSlogan(ctx: CanvasRenderingContext2D, slogan: string) {
+  if (!slogan) return
+  const text = slogan.trim()
+  const y = 308
+  const padX = 24
+  const padY = 18
+  const boxW = 1080 - 60 * 2
+  const lineH = 26
+  const lines = wrapText(ctx, text, boxW - padX * 2, `italic 500 22px serif`)
+  const boxH = padY * 2 + lineH * lines.length
+
+  // slogan 框（warm soft 底 + 左侧粗条）
+  ctx.fillStyle = COLOR.warmSoft
+  ctx.fillRect(60, y, boxW, boxH)
+  ctx.fillStyle = COLOR.warm
+  ctx.fillRect(60, y, 6, boxH)
+
+  ctx.fillStyle = COLOR.ink
+  ctx.font = `italic 500 22px serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  lines.forEach((line, i) => {
+    ctx.fillText(line, 60 + padX, y + padY + i * lineH)
+  })
+}
+
+function drawModule(ctx: CanvasRenderingContext2D, c: Character | null) {
+  if (!c?.info.module) return
+  ctx.fillStyle = COLOR.accent
+  ctx.font = `600 22px sans-serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  const hoLabel = c.info.hoSlot ? ` · Ho ${c.info.hoSlot}` : ''
+  ctx.fillText(`「${c.info.module}」${hoLabel}`, 60, 540)
+}
+
+function drawStatsGrid(ctx: CanvasRenderingContext2D, c: Character | null) {
+  // 小标题
+  ctx.fillStyle = COLOR.muted
+  ctx.font = `600 18px sans-serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('— 核心属性 —', 60, 620)
+
+  // 3 列 × 3 行（9 维属性）
+  const gridX = 60
+  const gridY = 660
+  const cellW = (1080 - 60 * 2 - 16 * 2) / 3 // 间距 16
+  const cellH = 100
+
+  const stats: Array<[keyof CharacterStats, string]> = [
+    ['str', 'STR 力量'],
+    ['dex', 'DEX 敏捷'],
+    ['pow', 'POW 意志'],
+    ['con', 'CON 体质'],
+    ['app', 'APP 外貌'],
+    ['edu', 'EDU 教育'],
+    ['siz', 'SIZ 体型'],
+    ['int', 'INT 智力'],
+    ['luck', 'LUCK 幸运'],
+  ]
+
+  stats.forEach(([key, label], idx) => {
+    const col = idx % 3
+    const row = Math.floor(idx / 3)
+    const x = gridX + col * (cellW + 16)
+    const y = gridY + row * (cellH + 12)
+    const v = c?.stats[key] ?? 0
+
+    // 底色
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'
+    ctx.fillRect(x, y, cellW, cellH)
+    // 左边条
+    ctx.fillStyle = COLOR.accent
+    ctx.fillRect(x, y, 4, cellH)
+    // 标签
+    ctx.fillStyle = COLOR.muted
+    ctx.font = `500 18px sans-serif`
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText(label, x + 16, y + 14)
+    // 值
+    ctx.fillStyle = COLOR.ink
+    ctx.font = `700 44px ${'monospace'}`
+    ctx.textAlign = 'right'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(String(v), x + cellW - 16, y + cellH / 2 + 6)
+  })
+}
+
+function drawDerived(ctx: CanvasRenderingContext2D, c: Character | null) {
+  ctx.fillStyle = COLOR.muted
+  ctx.font = `600 18px sans-serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('— 衍生值 —', 60, 1010)
+
+  const items = [
+    { label: 'HP', v: c?.derived.hp ?? 0, color: COLOR.danger },
+    { label: 'SAN', v: c?.derived.san ?? 0, color: COLOR.accent },
+    { label: 'MP', v: c?.derived.mp ?? 0, color: COLOR.highlight },
+    { label: 'MOV', v: c?.derived.mov ?? 0, color: COLOR.warm },
+    { label: 'Build', v: c?.derived.build ?? 0, color: COLOR.muted },
+  ]
+  const startX = 60
+  const cellW = (1080 - 60 * 2 - 16 * 4) / 5
+  const cellH = 80
+  const y = 1050
+
+  items.forEach((it, i) => {
+    const x = startX + i * (cellW + 16)
+    ctx.fillStyle = COLOR.accentSoft
+    ctx.fillRect(x, y, cellW, cellH)
+    ctx.fillStyle = it.color
+    ctx.fillRect(x, y, cellW, 4)
+
+    ctx.fillStyle = COLOR.muted
+    ctx.font = `500 16px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(it.label, x + cellW / 2, y + 14)
+
+    ctx.fillStyle = COLOR.ink
+    ctx.font = `700 32px ${'monospace'}`
+    ctx.textBaseline = 'middle'
+    ctx.fillText(String(it.v), x + cellW / 2, y + 50)
+  })
+}
+
+function drawSkills(ctx: CanvasRenderingContext2D, c: Character | null) {
+  if (!c) return
+  ctx.fillStyle = COLOR.muted
+  ctx.font = `600 18px sans-serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('— 技能 —', 60, 1180)
+
+  const skills = [...c.skills]
+    .map((s) => ({ name: s.name, total: s.initial + s.growth + s.occupation + s.interest }))
+    .filter((s) => s.total > 0)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 14)
+
+  const startY = 1220
+  const rowH = 30
+  const colW = (1080 - 60 * 2 - 32) / 2 // 2 列
+  if (skills.length === 0) {
+    ctx.fillStyle = COLOR.muted
+    ctx.font = `400 16px sans-serif`
+    ctx.textAlign = 'left'
+    ctx.fillText('（未填写技能）', 60, startY + 8)
+    return
+  }
+
+  skills.forEach((s, i) => {
+    const col = i % 2
+    const row = Math.floor(i / 2)
+    const x = 60 + col * (colW + 32)
+    const y = startY + row * rowH
+
+    // 名字
+    ctx.fillStyle = COLOR.ink
+    ctx.font = `500 18px sans-serif`
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(truncate(s.name, 12), x, y)
+
+    // 值（右对齐）
+    ctx.fillStyle = COLOR.accent
+    ctx.font = `600 18px ${'monospace'}`
+    ctx.textAlign = 'right'
+    ctx.fillText(String(s.total), x + colW, y)
+
+    // 分割点（极淡虚线）
+    ctx.strokeStyle = COLOR.line
+    ctx.lineWidth = 0.5
+    ctx.setLineDash([2, 4])
+    ctx.beginPath()
+    ctx.moveTo(x, y + 12)
+    ctx.lineTo(x + colW, y + 12)
+    ctx.stroke()
+    ctx.setLineDash([])
+  })
+}
+
+function drawBackground_(ctx: CanvasRenderingContext2D, bg: string) {
+  const text = bg.trim()
+  if (!text) return
+  ctx.fillStyle = COLOR.muted
+  ctx.font = `600 18px sans-serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  // 顶部留 14 行（7 行 × 2 列）+ 30 行间距
+  ctx.fillText('— 背景 —', 60, 1380)
+
+  ctx.fillStyle = COLOR.ink
+  ctx.font = `400 18px sans-serif`
+  ctx.fillText(truncate(text, 56), 60, 1410)
+}
+
+function drawFooter(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  ctx.strokeStyle = COLOR.line
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(60, height - 50)
+  ctx.lineTo(width - 60, height - 50)
+  ctx.stroke()
+
+  ctx.fillStyle = COLOR.muted
+  ctx.font = `400 14px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('Made with TRPG Helper · 本地生成 · 数据不上传', width / 2, height - 28)
+}
+
+// ============================ 文本辅助 ============================
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s
+  return s.slice(0, max - 1) + '…'
+}
+
+/**
+ * 按宽度自动换行（粗略按字符宽度估算）
+ */
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  font: string,
+): string[] {
+  ctx.font = font
+  const lines: string[] = []
+  let line = ''
+  for (const ch of text) {
+    const test = line + ch
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line)
+      line = ch
+    } else {
+      line = test
+    }
+  }
+  if (line) lines.push(line)
+  return lines
+}
+
+/** 把 canvas 转成 Blob URL 并触发下载 */
+export function downloadCanvasAsPng(canvas: HTMLCanvasElement, filename: string): void {
+  canvas.toBlob((blob) => {
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }, 'image/png')
+}
