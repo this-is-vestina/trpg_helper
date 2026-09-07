@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Copy, Trash2, User, FileCode } from 'lucide-react'
+import { Plus, Copy, Trash2, User, FileCode, Upload, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -41,10 +41,26 @@ export function CharacterList() {
   const loadAll = useCharacterStore((s) => s.loadAll)
   const duplicate = useCharacterStore((s) => s.duplicate)
   const remove = useCharacterStore((s) => s.remove)
+  const exportAll = useCharacterStore((s) => s.exportAll)
+  const importAll = useCharacterStore((s) => s.importAll)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importNotice, setImportNotice] = useState<string | null>(null)
 
   useEffect(() => {
     loadAll()
   }, [loadAll])
+
+  async function handleImportFile(file: File) {
+    setImportNotice(null)
+    const text = await file.text()
+    try {
+      await importAll(text)
+      setImportNotice(`导入成功，共 ${useCharacterStore.getState().characters.length} 张角色卡`)
+    } catch {
+      // 错误已由 store.error 显示
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -56,6 +72,35 @@ export function CharacterList() {
           </p>
         </div>
         <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) handleImportFile(f)
+              e.target.value = ''
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+          >
+            <Upload />
+            导入 JSON
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => exportAll()}
+            disabled={characters.length === 0}
+          >
+            <Download />
+            导出 JSON
+          </Button>
           <Button asChild variant="outline">
             <Link to="/st-importer">
               <FileCode />
@@ -74,6 +119,12 @@ export function CharacterList() {
       {error && (
         <div className="rounded-sm border border-danger bg-danger/10 px-3 py-2 text-sm text-danger">
           {error}
+        </div>
+      )}
+
+      {importNotice && (
+        <div className="rounded-sm border border-accent bg-accent-soft px-3 py-2 text-sm text-accent">
+          {importNotice}
         </div>
       )}
 
