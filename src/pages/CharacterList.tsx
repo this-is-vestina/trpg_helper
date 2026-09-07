@@ -201,12 +201,6 @@ function CharacterCard({
               >
                 {c.info.name || '未命名'}
               </Link>
-              {c.info.module && (
-                <span className="text-base font-medium text-accent">
-                  {c.info.module}
-                  {c.info.hoSlot ? ` · Ho${c.info.hoSlot}` : ''}
-                </span>
-              )}
             </div>
             <div className="truncate text-xs text-muted">
               {c.info.player && `PL: ${c.info.player}`}
@@ -214,6 +208,12 @@ function CharacterCard({
               {c.info.age ? ` · ${c.info.age}岁` : ''}
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1">
+              {c.info.module && (
+                <Badge className="border-transparent bg-accent-soft px-1.5 py-0 text-[10px] text-accent">
+                  {c.info.module}
+                  {c.info.hoSlot ? ` · Ho ${c.info.hoSlot}` : ''}
+                </Badge>
+              )}
               {c.tags.map((t) => {
                 if (isModuleStatus(t)) {
                   return (

@@ -9,11 +9,11 @@
 
 import type { PosterTemplate } from '@/features/character/types'
 
-/** 「调查员自介」模板 */
+/** 「角色卡」模板（MVP 自介） */
 export const SELF_INTRO_TEMPLATE: PosterTemplate = {
   id: 'self-intro-v1',
   type: 'self-intro',
-  name: '调查员自介',
+  name: '角色卡',
   thumbnail: '',
   size: { w: 1080, h: 1440 },
   fields: [
@@ -59,6 +59,14 @@ export const RECRUIT_TEMPLATE: PosterTemplate = {
       multiline: true,
       maxLength: 240,
       placeholder: '剧情简介 / 氛围基调 / PL 玩家将经历什么',
+    },
+    { key: 'openTime', label: '开团时间', maxLength: 40, placeholder: '10月1日 / 满员即开' },
+    {
+      key: 'selfIntro',
+      label: '自我介绍（KP）',
+      multiline: true,
+      maxLength: 120,
+      placeholder: '我是 XX，带团 XX 年，风格偏硬核/轻松……',
     },
     {
       key: 'requirements',

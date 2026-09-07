@@ -75,7 +75,9 @@ export function renderRecruitPoster(canvas: HTMLCanvasElement, input: RecruitPos
   drawRecruitHeader(ctx, template.size.w, values.status ?? '', values.moduleType ?? '')
   drawRecruitModuleName(ctx, template.size.w)
   drawRecruitSummary(ctx, values.summary ?? '')
+  drawRecruitSelfIntro(ctx, values.selfIntro ?? '')
   drawRecruitInfoList(ctx, [
+    { label: '开团时间', value: values.openTime ?? '' },
     { label: '招募需求', value: values.requirements ?? '' },
     { label: '跑团时间', value: values.schedule ?? '' },
     { label: '平台', value: values.platform ?? '' },
@@ -469,16 +471,48 @@ function drawRecruitSummary(ctx: CanvasRenderingContext2D, text: string) {
   })
 }
 
+function drawRecruitSelfIntro(ctx: CanvasRenderingContext2D, text: string) {
+  if (!text.trim()) return
+  const y = 470
+  const padX = 22
+  const padY = 14
+  const boxW = 1080 - 60 * 2
+  const lineH = 24
+  const lines = wrapText(ctx, text.trim(), boxW - padX * 2, `italic 400 16px serif`).slice(0, 2)
+  const boxH = padY * 2 + 18 + lineH * lines.length
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)'
+  ctx.fillRect(60, y, boxW, boxH)
+  ctx.strokeStyle = COLOR.warm
+  ctx.lineWidth = 1
+  ctx.setLineDash([3, 3])
+  ctx.strokeRect(60, y, boxW, boxH)
+  ctx.setLineDash([])
+
+  ctx.fillStyle = COLOR.warm
+  ctx.font = `600 13px sans-serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  ctx.fillText('— KP 自我介绍 —', 60 + padX, y + padY - 4)
+
+  ctx.fillStyle = COLOR.ink
+  ctx.font = `italic 400 16px serif`
+  ctx.textBaseline = 'top'
+  lines.forEach((line, i) => {
+    ctx.fillText(line, 60 + padX, y + padY + 16 + i * lineH)
+  })
+}
+
 interface RecruitInfoItem {
   label: string
   value: string
 }
 
 function drawRecruitInfoList(ctx: CanvasRenderingContext2D, items: RecruitInfoItem[]) {
-  const startY = 540
-  const rowH = 64
+  const startY = 580
+  const rowH = 56
   const boxW = 1080 - 60 * 2
-  const labelW = 160
+  const labelW = 150
 
   const visibleItems = items.filter((it) => it.value.trim())
 
@@ -491,37 +525,33 @@ function drawRecruitInfoList(ctx: CanvasRenderingContext2D, items: RecruitInfoIt
   ctx.fillText('— 关键信息 —', 60, startY - 30)
 
   visibleItems.forEach((item, i) => {
-    const y = startY + i * (rowH + 8)
-    // 卡片背景
+    const y = startY + i * (rowH + 6)
     ctx.fillStyle = COLOR.accentSoft
     ctx.fillRect(60, y, boxW, rowH)
-    // 左侧 label 背景
     ctx.fillStyle = COLOR.accent
     ctx.fillRect(60, y, labelW, rowH)
 
-    // label
     ctx.fillStyle = '#ffffff'
-    ctx.font = `600 16px sans-serif`
+    ctx.font = `600 14px sans-serif`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(item.label, 60 + labelW / 2, y + rowH / 2 + 1)
 
-    // value（自动换行）
     ctx.fillStyle = COLOR.ink
-    ctx.font = `400 18px sans-serif`
+    ctx.font = `400 16px sans-serif`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     const valueText = item.value.trim()
-    const valLines = wrapText(ctx, valueText, boxW - labelW - 32, `400 18px sans-serif`).slice(0, 2)
+    const valLines = wrapText(ctx, valueText, boxW - labelW - 32, `400 16px sans-serif`).slice(0, 2)
     valLines.forEach((line, li) => {
-      ctx.fillText(line, 60 + labelW + 16, y + rowH / 2 + (li - (valLines.length - 1) / 2) * 22)
+      ctx.fillText(line, 60 + labelW + 16, y + rowH / 2 + (li - (valLines.length - 1) / 2) * 20)
     })
   })
 }
 
 function drawRecruitContact(ctx: CanvasRenderingContext2D, text: string) {
   if (!text.trim()) return
-  const y = 1080
+  const y = 1010
   const padX = 24
   const padY = 18
   const boxW = 1080 - 60 * 2
@@ -533,7 +563,6 @@ function drawRecruitContact(ctx: CanvasRenderingContext2D, text: string) {
   ctx.fillStyle = COLOR.warm
   ctx.fillRect(60, y, 6, Math.max(50, padY * 2 + lineH * lines.length))
 
-  // label
   ctx.fillStyle = COLOR.warm
   ctx.font = `700 16px sans-serif`
   ctx.textAlign = 'left'
@@ -550,7 +579,7 @@ function drawRecruitContact(ctx: CanvasRenderingContext2D, text: string) {
 
 function drawRecruitNotes(ctx: CanvasRenderingContext2D, text: string) {
   if (!text.trim()) return
-  const y = 1220
+  const y = 1140
   const padX = 20
   const padY = 18
   const boxW = 1080 - 60 * 2
