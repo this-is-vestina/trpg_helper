@@ -43,8 +43,62 @@ export const SELF_INTRO_TEMPLATE: PosterTemplate = {
   },
 }
 
-/** 当前内置模板清单（MVP 仅 1 个） */
-export const POSTER_TEMPLATES: PosterTemplate[] = [SELF_INTRO_TEMPLATE]
+/** 「模组招募」模板（Phase 3-A） */
+export const RECRUIT_TEMPLATE: PosterTemplate = {
+  id: 'recruit-v1',
+  type: 'recruit',
+  name: '模组招募',
+  thumbnail: '',
+  size: { w: 1080, h: 1440 },
+  fields: [
+    { key: 'moduleType', label: '模组类型', maxLength: 30, placeholder: '原创 / 改编 / 推理 / 恐怖 / 短团 / 长团' },
+    { key: 'status', label: '招募状态', maxLength: 20, placeholder: '招募中 / 即将开团' },
+    {
+      key: 'summary',
+      label: '模组简介',
+      multiline: true,
+      maxLength: 240,
+      placeholder: '剧情简介 / 氛围基调 / PL 玩家将经历什么',
+    },
+    {
+      key: 'requirements',
+      label: 'PL 招募需求',
+      multiline: true,
+      maxLength: 180,
+      placeholder: '人数 / 职业偏好 / 年龄段 / 是否需要预制卡',
+    },
+    { key: 'schedule', label: '跑团时间', maxLength: 60, placeholder: '每周六 20:00-23:00 · 北京时间' },
+    { key: 'platform', label: '平台', maxLength: 30, placeholder: 'QQ 团房 / Discord / 线下' },
+    {
+      key: 'rules',
+      label: '规则',
+      multiline: true,
+      maxLength: 160,
+      placeholder: 'COC7 第七版 + 房规（投 1-5 大成功 / 96-100 大失败）',
+    },
+    { key: 'fee', label: '收费情况', maxLength: 30, placeholder: '无偿 / AA / 收费 XX 元' },
+    { key: 'contact', label: '联系方式', maxLength: 60, placeholder: 'QQ: 123456 / Discord: name#1234' },
+    {
+      key: 'notes',
+      label: '其他备注（可选）',
+      multiline: true,
+      maxLength: 160,
+      placeholder: '对 PL 的额外要求 / 警告内容',
+    },
+  ],
+  artSpec: {
+    background: { type: 'gradient', value: '#f4ecde,#e8d9c0' },
+    layers: [],
+    fonts: {
+      heading: '"Source Han Serif SC", "Noto Serif SC", serif',
+      body: '"Source Han Sans SC", "Noto Sans SC", system-ui, sans-serif',
+      mono: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+    },
+  },
+}
+
+/** 当前内置模板清单 */
+export const POSTER_TEMPLATES: PosterTemplate[] = [SELF_INTRO_TEMPLATE, RECRUIT_TEMPLATE]
 
 export function getTemplateById(id: string): PosterTemplate | undefined {
   return POSTER_TEMPLATES.find((t) => t.id === id)
